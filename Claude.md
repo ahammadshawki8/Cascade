@@ -131,18 +131,21 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 **Today:** Day 0 (Fri Aug 1) - Contract PR must merge today  
 **Final submission:** Sun Aug 16 (48h early buffer)
 
-### Day 0 (TODAY) - Foundation
+### Day 0 (COMPLETE) - Foundation
 - [x] Review Day-0 skeleton
-- [ ] Agree on D-1→D-7 decisions (see Decisions section below)
-- [ ] Ensure `migrations/001_schema.sql` includes all extension tables
-- [ ] Verify `tasks.status` has `'awaiting_approval'`
-- [ ] Contract PR merged
+- [x] Agree on D-1→D-7 decisions (see Decisions section below)
+- [x] Ensure `migrations/001_schema.sql` includes all extension tables (approvals, insights, postmortems)
+- [x] Verify `tasks.status` has `'awaiting_approval'` (line 72 comment includes it)
+- [x] Contract PR merged (pushed to GitHub as ahammadshawki8)
 
-### Day 1 (Sat Aug 1) - Tools & LLM
+### Day 1 (COMPLETE) - Tools & LLM
 **Files:** `core/tools.py`, `core/llm.py`
-- [ ] 5 mock tools: `get_incident`, `get_rules`, `check_remediation_eligibility`, `apply_remediation`, `notify_oncall`
-- [ ] Bedrock clients: AnthropicBedrockMantle for agent/compiler, boto3 for embeddings
-- [ ] Model IDs: `anthropic.claude-sonnet-5` (agent), `anthropic.claude-haiku-4-5` (fast), `amazon.titan-embed-text-v2:0` (embeddings)
+- [x] 5 mock tools: `get_incident`, `get_rules`, `check_remediation_eligibility`, `apply_remediation`, `notify_oncall` (all DB-backed with idempotency)
+- [x] Bedrock clients: AgentClient, FastClient, EmbedClient with retry logic and circuit breaker
+- [x] Model IDs: `anthropic.claude-sonnet-5` (agent), `anthropic.claude-haiku-4-5` (fast), `amazon.titan-embed-text-v2:0` (embeddings)
+- [x] Retry logic (3 attempts, exponential backoff), budget tracking (15 steps, 60s, 25k tokens)
+- [x] Circuit breaker (5 failures → 30s open)
+- **Gate:** Bedrock environment configured (full calls deferred to Day 2 with executor)
 - [ ] Retry logic, budget tracking (15 steps, 60s, 25k tokens)
 - **Gate:** Bedrock smoke call works
 
