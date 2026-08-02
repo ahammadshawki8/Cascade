@@ -45,10 +45,10 @@ INSERT INTO rules (rule_key, version, domain, body, params, changed_by) VALUES
 -- =============================================================================
 
 INSERT INTO mock_incidents (incident_id, kind, severity, service_name, service_tier, deploy_timestamp, state) VALUES
-('INC-1001', 'bad_deploy', 'P1', 'api-gateway', 'production', NOW() - INTERVAL '2 hours', 'open'),
-('INC-1002', 'error_spike', 'P2', 'payment-service', 'production', NOW() - INTERVAL '30 minutes', 'open'),
-('INC-1003', 'resource_exhaustion', 'P1', 'database-cluster', 'production', NOW() - INTERVAL '15 minutes', 'open'),
-('INC-1004', 'bad_deploy', 'P2', 'auth-service', 'staging', NOW() - INTERVAL '1 hour', 'open');
+('INC-1001', 'bad_deploy', 'P1', 'api-gateway', 1, NOW() - INTERVAL '2 hours', 'open'),
+('INC-1002', 'error_spike', 'P2', 'payment-service', 1, NOW() - INTERVAL '30 minutes', 'open'),
+('INC-1003', 'resource_exhaustion', 'P1', 'database-cluster', 1, NOW() - INTERVAL '15 minutes', 'open'),
+('INC-1004', 'bad_deploy', 'P2', 'auth-service', 2, NOW() - INTERVAL '1 hour', 'open');
 
 -- =============================================================================
 -- Audit Initial Setup
