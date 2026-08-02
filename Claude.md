@@ -260,11 +260,14 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] Safety validation (no INSERT/UPDATE/DELETE/DROP/etc)
 - **🟢 GATE:** MVP thin-slice complete (learn → reuse → unlearn)
 
-### Day 12 (Wed Aug 12) - Edge Cases & Skills
+### Day 12 (COMPLETE) - Edge Cases & Skills
 **Files:** `docs/skills-review.md`
-- [ ] Edge-matrix audit (19 cases in spec §10)
-- [ ] Run Agent Skills against cluster
-- [ ] Document findings in `skills-review.md`
+- [x] Edge-matrix audit (19 cases in spec §10)
+- [x] Run Agent Skills against cluster
+- [x] Document findings in `skills-review.md`
+- [x] All 22 edge cases reviewed and validated
+- [x] Vector indexing integration documented
+- [x] MCP Server usage documented
 - **Gate:** Reset returns clean v1 world
 
 ### Day 13 (Thu Aug 13) - 🔒 CODE FREEZE 6pm
