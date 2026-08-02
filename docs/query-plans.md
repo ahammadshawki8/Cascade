@@ -1,57 +1,67 @@
 # Query Plans - Vector Index Verification
 
-**CRITICAL WEEK 1 GATE:** This document must prove that `pb_embed_idx` is used in Phase 1 ANN queries.
+## Day 3 Gate: Vector Index Usage
 
-## Status
-- [ ] Day 3 complete
-- [ ] EXPLAIN output captured
-- [ ] Index `pb_embed_idx` confirmed in plan
-- [ ] MCP workflow screen-recorded
+**Date:** TBD  
+**Status:** Pending CRDB Cloud setup
 
----
+### Critical Query (Phase 1 ANN)
 
-## Phase 1 ANN Query
-
-**SQL:**
 ```sql
-SELECT playbook_id, embedding <-> $1 AS dist 
-FROM playbooks 
-ORDER BY embedding <-> $1 
+EXPLAIN
+SELECT playbook_id, embedding <-> $1::vector AS dist
+FROM playbooks
+ORDER BY embedding <-> $1::vector
 LIMIT 20;
 ```
 
-**Expected Index Usage:** `pb_embed_idx` (ivfflat on `embedding` with `vector_l2_ops`)
+### Expected Plan
 
----
-
-## EXPLAIN Output
-
-*Paste EXPLAIN (VERBOSE) output here from Claude Code + MCP Server*
+The plan **MUST** show `pb_embed_idx` index usage. Example:
 
 ```
--- Output goes here after Day 3
+Index Scan using pb_embed_idx on playbooks
+  Order By: (embedding <-> $1::vector)
+  Limit: 20
 ```
 
----
+### Verification Method
 
-## Verification Steps
+Via Claude Code + Managed MCP Server:
+1. Connect to CASCADE cluster via MCP config snippet
+2. Run EXPLAIN query
+3. Screen-record for video
+4. Paste output below
 
-1. Connect Claude Code to CockroachDB via Managed MCP Server
-2. Run query with EXPLAIN (VERBOSE)
-3. **Screen record the MCP workflow** (needed for demo video)
-4. Paste output above
-5. Verify index appears in plan
+### EXPLAIN Output
 
----
+```
+[Output will be pasted here after CRDB Cloud setup]
+```
 
-## If Index Not Used
+### Verification Code
 
-**STOP EVERYTHING.** This is a stop-the-world gate.
+```python
+from core.retrieval import verify_vector_index
 
-Possible issues:
-1. Index not created (check migrations)
-2. Wrong operator used (must be `<->` not `<=>` or `<#>`)
-3. Vector index not enabled (check cluster setting)
-4. Query planner choosing seq scan (force with hint?)
+result = await verify_vector_index(db)
+print(f"Uses index: {result['uses_index']}")
+print(f"Plan:\n{result['plan']}")
+```
 
-Fix before proceeding to any other work.
+### Notes
+
+- Operator MUST be `<->` (L2 distance)
+- NEVER use `<=>` or `<#>` (disables index)
+- Titan V2 with normalize=true makes L2 ≡ cosine ranking
+- If index not used: Check operator, check CRDB version, verify index exists
+
+### Gate Status
+
+- [ ] CRDB Cloud cluster created
+- [ ] Vector index `pb_embed_idx` created
+- [ ] EXPLAIN shows index usage
+- [ ] Screen recording captured
+- [ ] Output pasted above
+
+**⚠️ CRITICAL:** If index NOT found in plan, ALL feature work STOPS until fixed.

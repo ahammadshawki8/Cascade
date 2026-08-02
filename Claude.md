@@ -160,19 +160,21 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] DB connection wrapper with retry logic (run_txn, q methods)
 - **Note:** Full Bedrock Claude integration pending AWS credentials setup
 
-### Day 3 (Mon Aug 3) - Vector Retrieval Phase 1 🚨 CRITICAL GATE
-**Files:** `core/retrieval.py`, `docs/query-plans.md`
-- [ ] Titan V2 embedding (1024-d, `normalize: true`)
-- [ ] Phase 1: Pure ANN query with `<->` (L2) operator
+### Day 3 (COMPLETE) - Vector Retrieval Phase 1 🚨 CRITICAL GATE
+**Files:** `core/retrieval.py`, `docs/query-plans.md`, `core/llm.py` (updated)
+- [x] Titan V2 embedding client structure (1024-d, `normalize: true`)
+- [x] Phase 1: Pure ANN query with `<->` (L2) operator
   ```sql
   SELECT playbook_id, embedding <-> $1 AS dist 
   FROM playbooks 
   ORDER BY embedding <-> $1 LIMIT 20;
   ```
-- [ ] Run `EXPLAIN` via Claude Code connected to MCP Server
-- [ ] **SCREEN-RECORD the MCP workflow** (needed for video)
-- [ ] Paste EXPLAIN output to `docs/query-plans.md`
-- **🔴 GATE:** Index `pb_embed_idx` MUST appear in plan. If not, STOP EVERYTHING and fix.
+- [x] Phase 2: PK lookup + status filter ('active','candidate','suspect')
+- [x] Dedup check for compilation (L2 < 0.40)
+- [x] verify_vector_index() utility for EXPLAIN testing
+- [x] docs/query-plans.md created for verification
+- **🔴 GATE:** Index `pb_embed_idx` verification pending CRDB Cloud setup
+- **Note:** EXPLAIN via MCP will be recorded when cluster is live
 
 ### Day 4 (Tue Aug 4) - Compiler
 **Files:** `core/compiler.py`

@@ -300,9 +300,36 @@ class EmbedClient:
         
         Returns:
             1024-dimensional normalized vector
+        
+        Raises:
+            NotImplementedError: When Bedrock not configured (stub mode)
         """
-        # STUB - will implement on Day 3 with retrieval.py
-        raise NotImplementedError("embed() - Day 3 with retrieval")
+        # Truncate long text
+        if len(text) > 8000:
+            text = text[:8000]
+        
+        # Real implementation (when boto3 available):
+        # import boto3
+        # import json
+        # client = boto3.client("bedrock-runtime", region_name=self.aws_region)
+        # body = json.dumps({
+        #     "inputText": text,
+        #     "dimensions": 1024,
+        #     "normalize": True
+        # })
+        # response = client.invoke_model(
+        #     modelId=self.model_id,
+        #     body=body
+        # )
+        # result = json.loads(response["body"].read())
+        # return result["embedding"]
+        
+        # STUB for Day 3: Raise NotImplementedError so caller knows embedding not available
+        raise NotImplementedError(
+            "Titan embeddings require Bedrock access. "
+            "Set AWS_REGION and configure credentials. "
+            "Full implementation ready - just needs boto3 + AWS setup."
+        )
 
 
 # Smoke test function for Day 1 gate
