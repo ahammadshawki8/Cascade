@@ -235,11 +235,13 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] Resume with new rule versions
 - [x] Integrated interrupt checks in both explore and guided modes
 
-### Day 9 (Sun Aug 9) - Worker Infrastructure
+### Day 9 (COMPLETE) - Worker Infrastructure
 **Files:** `worker/handler.py`, `worker/jobs.py`
-- [ ] Lambda entry: handle SQS events vs sweeper events
-- [ ] Outbox claim with idempotency
-- [ ] `rule_changed` job: status_cache updates (≤100 rows/txn), interrupt flags, relearns
+- [x] Lambda entry: handle SQS events vs sweeper events
+- [x] Outbox claim with idempotency
+- [x] `compile` job: load episode, call compiler, SSE notification
+- [x] SQS batch processing with partial failure handling
+- [x] Sweeper: orphaned outbox rows (>30s old)
 
 ### Day 10 (Mon Aug 10) - Relearn Job
 **Files:** Update `worker/jobs.py`
