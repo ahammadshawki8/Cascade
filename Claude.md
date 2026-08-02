@@ -219,11 +219,12 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - **Note:** Precondition/param extraction stubs (Haiku calls ready for AWS)
 - **🔴 GATE:** Guided ≥3× faster pending full integration test
 
-### Day 7 (Fri Aug 7) - Cascade Transaction
+### Day 7 (COMPLETE) - Cascade Transaction
 **Files:** `core/cascade.py`
-- [ ] O(1) txn: close old rule, insert new rule, ONE outbox, ONE audit (4 writes total)
-- [ ] Post-commit: SQS publish, InterruptBus fan-out, SSE `rule.changed`
-- [ ] **Gate:** HTTPS live (Ashfaq handles deploy)
+- [x] O(1) txn: close old rule, insert new rule, ONE outbox, ONE audit (4 writes total)
+- [x] Post-commit: SQS publish, InterruptBus fan-out, SSE `rule.changed`
+- [x] analyze_impact() and simulate_rule_change() for UI preview
+- **Gate:** HTTPS live (Ashfaq handles deploy)
 
 ### Day 8 (Sat Aug 8) - Interrupts
 **Files:** Update `executor.py`
