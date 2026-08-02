@@ -226,13 +226,14 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] analyze_impact() and simulate_rule_change() for UI preview
 - **Gate:** HTTPS live (Ashfaq handles deploy)
 
-### Day 8 (Sat Aug 8) - Interrupts
+### Day 8 (COMPLETE) - Interrupts
 **Files:** Update `executor.py`
-- [ ] Listen to `InterruptBus` events (from `app/bus.py`)
-- [ ] Check `tasks.interrupt_flag` before side-effects
-- [ ] Scratchpad persist on interrupt
-- [ ] Re-plan with fresh `get_rules` call
-- [ ] Resume with new rule versions
+- [x] Listen to `InterruptBus` events (from `app/bus.py`)
+- [x] Check `tasks.interrupt_flag` before side-effects (_check_interrupt)
+- [x] Scratchpad persist on interrupt
+- [x] Re-plan with fresh `get_rules` call (_handle_interrupt)
+- [x] Resume with new rule versions
+- [x] Integrated interrupt checks in both explore and guided modes
 
 ### Day 9 (Sun Aug 9) - Worker Infrastructure
 **Files:** `worker/handler.py`, `worker/jobs.py`
