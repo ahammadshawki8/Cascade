@@ -243,11 +243,13 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] SQS batch processing with partial failure handling
 - [x] Sweeper: orphaned outbox rows (>30s old)
 
-### Day 10 (Mon Aug 10) - Relearn Job
+### Day 10 (COMPLETE) - Relearn Job
 **Files:** Update `worker/jobs.py`
-- [ ] `relearn` job: synthesize task, run explore, compile v2
-- [ ] Set `supersedes` → lineage v1→v2
-- [ ] POST `/internal/sse` → `playbook.changed`
+- [x] `rule_changed` job: status_cache updates (≤100 rows/txn), interrupt flags, relearns
+- [x] `relearn` job: synthesize task, run explore, compile v2
+- [x] Set `supersedes` → lineage v1→v2
+- [x] POST `/internal/sse` → `playbook.changed`
+- [x] Batch processing to avoid large transactions
 
 ### Day 11 (Tue Aug 11) - Ops Copilot 🚨 MVP COMPLETE
 **Files:** `core/copilot.py` (NEW)
