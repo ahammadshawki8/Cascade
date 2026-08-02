@@ -108,6 +108,8 @@ class CopilotAnswer(BaseModel):
     sql: str
     results: list[dict[str, Any]]
     row_count: int
+    execution_time_ms: int = 0
+    error: Optional[str] = None
 
 
 class Insight(BaseModel):

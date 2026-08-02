@@ -251,12 +251,13 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] POST `/internal/sse` → `playbook.changed`
 - [x] Batch processing to avoid large transactions
 
-### Day 11 (Tue Aug 11) - Ops Copilot 🚨 MVP COMPLETE
-**Files:** `core/copilot.py` (NEW)
-- [ ] SQL synthesis from question (Claude Haiku)
-- [ ] Validate: starts with SELECT/WITH, single statement
-- [ ] Execute as `cascade_readonly` with 3s timeout + LIMIT 200 wrapper
-- [ ] Return SQL + results for display
+### Day 11 (COMPLETE) - Ops Copilot 🚨 MVP COMPLETE
+**Files:** `core/copilot.py` (NEW), `core/models.py` (updated)
+- [x] SQL synthesis from question (Claude Haiku)
+- [x] Validate: starts with SELECT/WITH, single statement
+- [x] Execute as `cascade_readonly` with 3s timeout + LIMIT 200 wrapper
+- [x] Return SQL + results for display
+- [x] Safety validation (no INSERT/UPDATE/DELETE/DROP/etc)
 - **🟢 GATE:** MVP thin-slice complete (learn → reuse → unlearn)
 
 ### Day 12 (Wed Aug 12) - Edge Cases & Skills
