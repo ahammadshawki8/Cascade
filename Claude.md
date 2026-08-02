@@ -149,13 +149,16 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [ ] Retry logic, budget tracking (15 steps, 60s, 25k tokens)
 - **Gate:** Bedrock smoke call works
 
-### Day 2 (Sun Aug 2) - Executor Explore Loop
-**Files:** `core/executor.py`
-- [ ] `run_task()` skeleton: retrieve → freshness → explore vs guided decision
-- [ ] Explore mode: Claude converse loop with tool calling
-- [ ] Stream steps over SSE (`InterruptBus` from `app/bus.py`)
-- [ ] Episode write (truncated to CRDB, full JSON to S3)
-- [ ] Task status transitions: `queued` → `running` → `succeeded`/`failed`
+### Day 2 (COMPLETE) - Executor Explore Loop
+**Files:** `core/executor.py`, `db.py` (new)
+- [x] `run_task()` skeleton: retrieve → freshness → explore vs guided decision
+- [x] Explore mode: Simulated tool-calling loop (full Claude integration deferred until Bedrock access)
+- [x] Stream steps over SSE (infrastructure ready)
+- [x] Episode write (truncated to CRDB, S3 stub for full JSON)
+- [x] Task status transitions: `queued` → `running` → `succeeded`/`failed`
+- [x] Budget tracking integrated (15 steps, 60s, 25k tokens)
+- [x] DB connection wrapper with retry logic (run_txn, q methods)
+- **Note:** Full Bedrock Claude integration pending AWS credentials setup
 
 ### Day 3 (Mon Aug 3) - Vector Retrieval Phase 1 🚨 CRITICAL GATE
 **Files:** `core/retrieval.py`, `docs/query-plans.md`
