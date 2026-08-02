@@ -188,17 +188,21 @@ async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
 - [x] Initial confidence 0.30 for new playbooks
 - **Gate:** INC-1001 compilation ready (pending end-to-end integration)
 
-### Day 5 (Wed Aug 5) - Freshness & Retrieval Phase 2-3
-**Files:** `core/freshness.py`, update `retrieval.py`
-- [ ] Phase 2: PK lookup filter `status_cache IN ('active','candidate','suspect')`
-- [ ] Phase 3: Freshness join
+### Day 5 (COMPLETE) - Freshness & Retrieval Phase 2-3
+**Files:** `core/freshness.py`, `core/retrieval.py` (already complete from Day 3)
+- [x] Point-of-use freshness check (THE authoritative staleness source)
   ```sql
   SELECT d.rule_key, d.rule_version, r.version AS head
   FROM playbook_deps d
   JOIN rules r ON d.rule_key = r.rule_key AND r.valid_to IS NULL
   WHERE d.playbook_id = $1 AND d.rule_version != r.version
   ```
-- [ ] Return `Fresh` or `Stale(stale_deps)` - NEVER a bool
+- [x] Returns `FreshnessResult` with is_fresh + stale_rules list (NEVER a bool)
+- [x] bulk_check_freshness() for worker status_cache updates
+- [x] Fail-safe: errors treated as stale
+- [x] Phase 2: PK lookup filter (already in retrieval.py from Day 3)
+- [x] Phase 3: Freshness join integrated (caller responsibility)
+- **Note:** Retrieval phases 2-3 were completed on Day 3
 
 ### Day 6 (Thu Aug 6) - Guided Path & Confidence 🚨 STOP-THE-WORLD GATE
 **Files:** `core/confidence.py`, update `executor.py`
