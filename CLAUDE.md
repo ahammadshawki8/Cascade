@@ -26,6 +26,74 @@ blocked only on AWS credentials**
 
 ---
 
+## 🤝 HANDOVER — READ THIS FIRST
+
+Shawki handed the project over on **August 5, 2026**. If you are picking this
+up, this section is the whole briefing. Everything below it is detail.
+
+### Get it running in ten minutes
+
+```bash
+docker start cascade-crdb                    # DB already provisioned locally
+cd backend  && pip install -e . && python run_local.py    # NOT bare uvicorn on Windows
+cd frontend && npm install && npm run dev
+```
+
+Then open `http://localhost:3000`, and `http://localhost:3000/docs` for the
+product documentation. Full setup, including migrations from scratch, is in
+`README.md`.
+
+### What is DONE and verified
+
+Not "written". Verified, with the evidence named.
+
+| Area | State |
+|---|---|
+| Engine end to end | ✅ learn → reuse → unlearn → **refuse** all run against real CockroachDB |
+| `verify_integration.py` | ✅ **81/81**, on live Groq + HuggingFace, not the local fallback |
+| Tier 1, 2, 3 features | ✅ 15 shipped, 2 deliberately skipped (see *Deliberately not built*) |
+| Frontend | ✅ desktop shell, command palette, builds clean, TypeScript passes |
+| Docs site | ✅ 16 pages at `/docs`, 16 Mermaid diagrams, copy buttons |
+| README | ✅ rewritten Aug 5, pure ASCII, every number re-verified against the code |
+| LLM providers | ✅ Groq + HuggingFace + OpenRouter all live-tested, incl. tool calling |
+| Latency claim | ✅ **3.31×** measured (6,561 ms → 1,981 ms) on Groq |
+| Repo | ✅ merged into one tree, 3 commits pushed to `ahammadshawki8/Cascade` |
+
+### What is NOT done
+
+| # | Not done | Blocked by | Where to start |
+|---|---|---|---|
+| 1 | **AWS account + credentials** | nothing, just needs doing | **[`AWS_SETUP.md`](AWS_SETUP.md)** |
+| 2 | **Bedrock model access** | AWS account. Has a review delay, so request it the moment you have an account | `AWS_SETUP.md` step 3 |
+| 3 | **Deployment** (`infra/01`–`07`) | AWS credentials | scripts are written and syntax-checked but **have never been executed** |
+| 4 | **CockroachDB Cloud cluster** | nothing. The `CCDB1_` key exists and authenticates, but **0 clusters are provisioned** | `infra/01`, or the Cloud console |
+| 5 | **Re-prove the vector index on Cloud** | a Cloud cluster | `GET /api/admin/verify-index` |
+| 6 | **Re-measure latency on Bedrock** | Bedrock access | quote 3.31× on Groq until then |
+| 7 | **Demo video** | nothing | demo sequence is scripted below |
+| 8 | **Devpost submission** | the video | deadline **Aug 16, 2026** |
+
+### The three things most likely to trip you up
+
+1. **`python run_local.py`, never bare `uvicorn`, on Windows.** psycopg's async
+   mode cannot drive the default ProactorEventLoop, and since Python 3.14
+   `set_event_loop_policy` no longer affects the loop uvicorn builds. Linux and
+   macOS are unaffected.
+2. **`RUN_WORKER_IN_PROCESS=true` locally.** There is no SQS or Lambda on your
+   laptop, so without it the compile event is queued and *no runbook ever
+   appears*. It must be `false` in a deployment or two consumers race.
+3. **`degraded` does not mean broken.** It means "not Bedrock". With the Groq
+   and HuggingFace keys in `backend/.env` the engine is running real models;
+   only the AWS claim is unproven.
+
+### Where the secrets are
+
+`backend/.env` holds working **Groq, OpenRouter, HuggingFace and CockroachDB
+Cloud** keys. It is gitignored and has never been committed (verified on every
+push). It does **not** travel with the repo, so get it from Shawki directly.
+`.env.example` is the key-less template.
+
+---
+
 ## 📍 WHERE WE ARE
 
 ### Verified working — local, real CockroachDB, `CASCADE_STUB_MODE=false`
@@ -100,8 +168,10 @@ cluster, then set `DATABASE_URL` to its DSN with `sslmode=verify-full`.
 | 3 | **CockroachDB Cloud cluster + DSNs** (`cascade_app`, `cascade_worker`, `cascade_readonly`) | Production DB; where the vector-index EXPLAIN must be re-proven |
 | 4 | GitHub repo + PAT *(optional)* | Amplify CI builds; without it `06` does a manual zip deploy |
 
-`ashfaq_track_A_tasks/.env` **does not exist** — only `.env.example` and `env`,
-both the same key-less template. Nothing was lost; it was never committed.
+**Step-by-step AWS setup, from creating the account to a working credential,
+is in [`AWS_SETUP.md`](AWS_SETUP.md).** Start there. It also lists the exact
+IAM permissions, the Bedrock model-access flow, and how to spend the $100 in
+activity credits without wasting any of them.
 
 ### $100 AWS activity credits
 
@@ -142,8 +212,13 @@ curl localhost:8000/api/admin/smoke -H "x-admin-token: dev-admin-token"
 
 ## 📁 STRUCTURE
 
+**Repo root is the project root.** The old `cascade/` working folder and the
+pre-merge `ashfaq_track_A_tasks/` snapshot are both gone; everything now lives
+directly in the git repo (`Desktop/Coackroach/cockroach`, remote
+`github.com/ahammadshawki8/Cascade`, branch `main`).
+
 ```
-cascade/
+<repo root>/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py · config.py · db.py · bus.py
@@ -191,8 +266,12 @@ cascade/
 │       └── docs/  Doc · DocsNav · CodeBlock · CopyButton · Mermaid
 ├── infra/                             7 scripts, 01–07
 ├── docs/query-plans.md · skills-review.md · multi-region.md
+├── ground_truth/                      spec · Day-0 contract · track split
+│                                      · ashfaq.md · shawki.md · HANDOFF.md
+├── README.md                          judge-facing, pure ASCII
+├── AWS_SETUP.md                       account → credentials, step by step
 ├── DEVIATIONS.md                      12 documented deviations
-└── Claude.md                          this file
+└── CLAUDE.md                          this file
 ```
 
 **Database:** 14 tables. Migration 003 added `anti_playbooks`; 004 added TTL,
@@ -485,7 +564,8 @@ curl -N https://<cloudfront>/api/events          # must stream, not buffer
 ### Remaining after deployment
 
 - [ ] Re-prove the vector index on Cloud → append to `docs/query-plans.md`
-- [ ] Re-measure cold vs guided with a live model → update README + Claude.md
+- [ ] Re-measure cold vs guided on Bedrock → update README + this file
+      (currently **3.31× on Groq**, which is a real number, just not the AWS one)
 - [ ] Run Agent Skills against the Cloud cluster → append to `docs/skills-review.md`
 - [ ] Record the 3-minute demo video
 - [ ] Devpost submission
@@ -643,9 +723,52 @@ missing deploy scripts · credential leak in the client bundle.
   stray predicate produced**
 - `docs/skills-review.md` — 12 schema/query findings, every one a live defect
 - `docs/multi-region.md` — T3.2 configuration and what it changes
-- `ground_truth/` — CASCADE_BUILD_SPEC v3.1, DAY0_CONTRACT, task split
+- `ground_truth/` — CASCADE_BUILD_SPEC v3.1, DAY0_CONTRACT, task split,
+  `ashfaq.md` and `shawki.md` (the two per-track memories), `HANDOFF.md`
 
 ---
 
-**Next action:** collect AWS credentials + Bedrock model access, then execute
+## 🗓️ SESSION LOG
+
+Kept so the next person can tell what changed recently and why, without
+reading four commits of diff.
+
+**August 4–5, 2026 (Shawki + Claude)**
+
+1. **Integration and audit.** Wired the two tracks together, found and fixed 20
+   defects across two audits (see *History* above). Suite went 34 → 81
+   assertions.
+2. **Tier 1–3 features.** 15 shipped, 2 deliberately skipped.
+3. **UI rebuild.** Desktop application shell: activity bar, command palette,
+   status bar, invisible scrollbars.
+4. **Security.** RBAC added; the admin-token leak into the client bundle found
+   and closed with a server-side proxy.
+5. **Docs site.** 16 pages at `/docs`, written for *using* the product rather
+   than reading the code. 16 Mermaid diagrams, syntax-highlighted code with
+   copy buttons, no em dashes.
+6. **Mermaid label clipping fixed.** Two separate measurement bugs: mermaid was
+   given an unresolvable `var(--font-…)` so it measured in a fallback font and
+   drew in another, and labels rendered at `line-height: 1.5` while being
+   measured at `normal`, which cost ~4px per line and cut the third line off
+   multi-line nodes.
+7. **Repo consolidation.** Deleted the redundant `ashfaq_track_A_tasks/`
+   snapshot (ground truth was byte-identical; `shawki.md` and `HANDOFF.md` were
+   unique and were preserved into `ground_truth/`), cleared the stale Track B
+   tree out of the repo, and moved the working project in. One commit.
+8. **Real providers.** Groq + HuggingFace + OpenRouter keys landed and were
+   live-tested. Fixed a dead HuggingFace host, a no-longer-free OpenRouter
+   model, an over-fitted compiler precondition that silently killed reuse, and
+   two Copilot failures that only a real model produces. Latency claim became
+   real: **3.31×**.
+9. **UI honesty.** `/api/metrics` now reports the serving provider, and the
+   degraded banner distinguishes "fallback provider, timings valid" from
+   "local planner, timings meaningless". It previously claimed the local
+   planner was running while Groq was serving.
+10. **README rewritten** against the actual code, and **`AWS_SETUP.md`** written
+    for the handover.
+
+---
+
+**Next action:** work through **[`AWS_SETUP.md`](AWS_SETUP.md)**. Request
+Bedrock model access on day one because of the review delay, then execute
 `infra/01` → `07` in order.
