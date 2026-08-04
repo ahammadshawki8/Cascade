@@ -108,12 +108,15 @@ async def get_metrics():
 
     # Surfaced in the metric bar: the demo must never imply it is talking to
     # Bedrock when it has silently fallen back to the local path.
-    from app.core.llm import llm_status
+    from app.core.llm import degraded_reason, llm_status, serving_provider
 
+    status = llm_status()
     return Metrics(
         cold=cold,
         guided=guided,
         retrieval=retrieval,
         counts_by_status=counts_by_status,
-        llm=llm_status(),
+        llm=status,
+        llm_provider=serving_provider(),
+        llm_reason=degraded_reason(),
     )

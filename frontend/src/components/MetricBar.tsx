@@ -9,6 +9,8 @@ interface MetricsData {
   retrieval?: { hits: number; precondition_misses: number };
   counts_by_status?: Record<string, number>;
   llm?: "ok" | "degraded";
+  llm_provider?: string | null;
+  llm_reason?: string | null;
 }
 
 interface MetricBarProps {
@@ -51,6 +53,10 @@ export function MetricBar({ data }: MetricBarProps) {
 
   const getCount = (status: string) => data?.counts_by_status?.[status] ?? 0;
 
+  // No provider name, or an explicit "local", means nothing real is serving.
+  const onLocalPlanner =
+    !data?.llm_provider || data.llm_provider === "local";
+
   return (
     <div style={{ position: "relative" }}>
       <div className={styles.metricBar}>
@@ -70,7 +76,9 @@ export function MetricBar({ data }: MetricBarProps) {
               title={
                 guidedIsFaster
                   ? "Guided execution is faster than learning from scratch."
-                  : "Guided was slower on this sample. Expected without a live model: the cold path has no LLM latency to save, while guided still pays for precondition and parameter checks."
+                  : onLocalPlanner
+                    ? "Guided was slower on this sample. Expected without a live model: the cold path has no model latency to save, while guided still pays for precondition and parameter checks."
+                    : "Guided was slower on this sample, which is worth investigating: a real model is serving, so exploring should be paying planning latency that guided avoids."
               }
             >
               Δ {deltaPct > 0 ? "+" : ""}
@@ -133,17 +141,33 @@ export function MetricBar({ data }: MetricBarProps) {
         </div>
       </div>
       
-      {/* Tasks are NOT queued when degraded — they run on the deterministic
-          local path. Saying otherwise misdescribes what the system is doing,
-          and the thing an operator actually needs to know is that the timing
-          comparison above is not meaningful in this mode. */}
+      {/* "Degraded" only means "not Bedrock", and that covers two very
+          different situations. A real fallback provider (Groq, OpenRouter,
+          HuggingFace) makes genuine model calls, so the timings above ARE
+          comparable — only the AWS claim is weaker. The local planner makes
+          none, so they are not. Saying "no model provider reachable" when
+          Groq is serving is simply false, and it is the timing caveat that an
+          operator actually needs to get right. */}
       {data?.llm === "degraded" && (
         <div className={styles.degradedStrip}>
-          <strong>Degraded:</strong>
-          <span>
-            no model provider reachable — tasks still run on the deterministic
-            local planner, but cold-vs-guided timings are not comparable.
-          </span>
+          {onLocalPlanner ? (
+            <>
+              <strong>Local planner:</strong>
+              <span>
+                no model provider reachable. Tasks still run, on the
+                deterministic local path, but cold-vs-guided timings are not
+                comparable.
+              </span>
+            </>
+          ) : (
+            <>
+              <strong>Fallback provider:</strong>
+              <span>
+                served by {data.llm_provider} rather than Bedrock. Timings are
+                real model calls and are comparable.
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>

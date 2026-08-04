@@ -75,7 +75,14 @@ Rules:
 - Never emit INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/GRANT/SET.
 - Name columns explicitly; avoid SELECT *.
 - Use -> and ->> for JSONB columns.
-- Keep result sets small; add ORDER BY and LIMIT where sensible."""
+- Keep result sets small; add ORDER BY and LIMIT where sensible.
+- playbooks has NO rule_key column. A runbook relates to a rule only through
+  playbook_deps. Staleness is:
+    FROM playbooks p
+    JOIN playbook_deps d ON d.playbook_id = p.playbook_id
+    JOIN rules r ON r.rule_key = d.rule_key AND r.valid_to IS NULL
+    WHERE d.rule_version <> r.version
+- Only use columns that appear in the schema above. Do not invent one."""
 
 
 class UnsafeSQL(ValueError):
@@ -130,6 +137,33 @@ async def answer_analytics_question(question: str, db) -> CopilotAnswer:
             message=f"Query exceeded the {TIMEOUT_SECONDS:.0f}s read timeout.",
         )
     except Exception as exc:
+        # A synthesized query that references a column that does not exist is
+        # the characteristic failure of a smaller model working from a schema
+        # summary. Where a built-in covers the same question, prefer answering
+        # correctly over reporting the model's mistake, but say which query
+        # actually ran rather than passing the built-in off as synthesis.
+        fallback = _canned_sql(question) if source != "builtin" else None
+        if fallback and fallback != sql:
+            log.warning("copilot synthesis failed (%s); using built-in", exc)
+            try:
+                rows = await asyncio.wait_for(
+                    db.q(_apply_limit(fallback)), timeout=TIMEOUT_SECONDS
+                )
+            except Exception:
+                rows = None
+            if rows is not None:
+                columns = list(rows[0].keys()) if rows else []
+                values = [[_scalar(row[c]) for c in columns] for row in rows]
+                return CopilotAnswer(
+                    question=question,
+                    sql=fallback,
+                    columns=columns,
+                    rows=values,
+                    message=(
+                        f"{len(values)} row(s) · built-in query, because the "
+                        f"synthesized one failed: {exc}"
+                    ),
+                )
         return CopilotAnswer(
             question=question, sql=sql, refused=True, message=f"Execution failed: {exc}"
         )
@@ -176,12 +210,41 @@ def _apply_limit(sql: str) -> str:
     return f"SELECT * FROM ({stripped}) AS copilot_result LIMIT {MAX_ROWS}"
 
 
+_SQL_KEYWORD = re.compile(
+    r"^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|GRANT|SET"
+    r"|TRUNCATE|MERGE|CALL|EXEC)\b",
+    re.IGNORECASE,
+)
+
+
+def _drop_trailing_prose(text: str) -> str:
+    """Remove commentary a model appended after its statement.
+
+    Smaller models ignore "no prose" often enough to matter: they emit the
+    statement, a semicolon, then a sentence explaining it. That sentence used
+    to reach the validator, which saw an interior semicolon and refused the
+    whole thing as multi-statement. The query was fine; the explanation was
+    the problem.
+
+    Only prose is dropped. If what follows the semicolon parses as another SQL
+    statement it is deliberately left in place so validation still refuses it.
+    "SELECT 1; DELETE FROM rules" must be rejected outright, not quietly
+    reduced to its harmless first half.
+    """
+    head, separator, tail = text.partition(";")
+    if not separator or not tail.strip():
+        return text
+    if _SQL_KEYWORD.match(tail):
+        return text
+    return f"{head};"
+
+
 def _strip_markdown(raw: str) -> str:
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:sql)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
-    return text.strip()
+    return _drop_trailing_prose(text.strip()).strip()
 
 
 def _scalar(value: Any) -> Any:

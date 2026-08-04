@@ -5,7 +5,8 @@
 **Submission deadline:** August 16, 2026
 **Last updated:** August 5, 2026
 
-**🟢 STATUS — code complete, locally verified, blocked only on AWS credentials**
+**🟢 STATUS — code complete, running on real models (Groq + HuggingFace),
+blocked only on AWS credentials**
 
 | | |
 |---|---|
@@ -15,10 +16,11 @@
 | Tier 3 (6 features) | ✅ shipped · 2 deliberately deferred |
 | UI | ✅ rebuilt as a desktop application shell |
 | Docs site | ✅ 16 pages, product-usage focused · 16 rendered Mermaid diagrams · every code block highlighted with a copy button |
-| **`verify_integration.py`** | **81 passed · 0 failed · 0 skipped** |
+| **`verify_integration.py`** | **81 passed · 0 failed · 0 skipped** — re-verified against **live Groq + HuggingFace**, not just the local fallback |
 | Frontend | builds clean, TypeScript passes |
 | Lint | 6 cosmetic findings, all in contract-frozen files |
 | Deployment | scripts written & syntax-checked, **not yet executed** |
+| **Live providers** | Groq (planner) + HuggingFace (embeddings) verified end to end · **cold 6.6s → guided 2.0s, 3.31×** |
 
 **Single source of truth.** This file supersedes any other progress notes.
 
@@ -40,26 +42,60 @@
 | **Copilot** | Answers with visible SQL; rejects 4 injection attempts; no false positive on `created_at` |
 | **Stub mode** | Every endpoint 200s with no database at all |
 
-### ⚠️ The one number not to trust yet
+### ✅ The latency number is now real — **3.3× faster**
 
-**Cold-vs-guided latency is not meaningful until Bedrock (or Groq) is live.**
-In degraded mode the planner is instant, so the measured delta reflects
-database round-trips only — and guided can even come out *slower*, because it
-still pays for precondition and parameter checks while explore has no LLM
-latency to save. The UI states this rather than hiding it: the delta chip turns
-amber on a regression, and the savings panel says "2.5× slower" instead of
-inventing "0.4× faster".
+Measured Aug 5 with **Groq serving the planner and HuggingFace serving
+embeddings**, against local CockroachDB:
 
-Re-measure after credentials land. Do not quote a multiplier taken in degraded
-mode.
+| | cold (explore) | guided (reuse) |
+|---|---|---|
+| wall clock | **6,561 ms** | **1,981 ms** |
+| steps | 4 | 4 |
+
+**speedup 3.31×**, retrieval 1 hit / 0 precondition misses, 1,169 tokens
+avoided per reuse. This supersedes the old warning: the earlier "guided is
+slower" reading was an artefact of the local planner having no model latency to
+save. Quote 3.3×, and say it was measured on Groq, not Bedrock.
+
+Re-measure once Bedrock is live; the number will change with model latency.
 
 ---
 
 ## 🔑 BLOCKED — NEEDED FROM ASHFAQ / AWS CONSOLE
 
+### 🔑 Keys that HAVE landed (Aug 5) — all verified live
+
+| Key | Status | Serving |
+|---|---|---|
+| `GROQ_API_KEY` | ✅ chat **and tool calling** verified | planner, ~0.6s/call |
+| `HF_API_KEY` | ✅ verified **1024-d, unit norm** | embeddings, matches `VECTOR(1024)` |
+| `OPENROUTER_API_KEY` | ✅ chat + tool calling verified | planner fallback |
+| `COCKROACH_API_KEY` | ⚠️ valid, but **nothing reads it** | see below |
+
+Two things had to be fixed to get there, both real bugs:
+
+1. **HuggingFace host was dead.** `api-inference.huggingface.co` no longer
+   resolves at all (DNS failure, not an HTTP error, so it failed opaquely).
+   Inference moved to `router.huggingface.co/hf-inference/models/{model}/...`.
+2. **The pinned OpenRouter model stopped being free.**
+   `meta-llama/llama-3.3-70b-instruct:free` now 404s with a pointer to the paid
+   slug. Repinned to `nvidia/nemotron-3-super-120b-a12b:free` (chat) and
+   `openai/gpt-oss-20b:free` (fast) — both confirmed to *return a tool call*,
+   which is the only property that matters here. Note OpenRouter free tier
+   rate-limits (429) under back-to-back use; it is a fallback, not a primary.
+
+**`COCKROACH_API_KEY` is a CockroachDB Cloud _management_ API key** (`CCDB1_`),
+not a SQL credential. It authenticates (verified: 200, **0 clusters
+provisioned**), but the app connects via `DATABASE_URL`, and
+`infra/01_ccloud_provision.sh` only prints console instructions — it never
+calls the API. So the key currently does nothing. To use Cloud: create the
+cluster, then set `DATABASE_URL` to its DSN with `sslmode=verify-full`.
+
+### Still blocked
+
 | # | Needed | Why |
 |---|--------|-----|
-| 1 | **AWS credentials** with Bedrock, ECS, Lambda, SQS, S3, Secrets Manager, ECR, CloudFront, Amplify | Nothing deploys; `llm` stays `degraded` |
+| 1 | **AWS credentials** with Bedrock, ECS, Lambda, SQS, S3, Secrets Manager, ECR, CloudFront, Amplify | Nothing deploys. `llm` reads `degraded`, which now means "Groq not Bedrock", not "broken" |
 | 2 | **Bedrock model access granted** for the three pinned models | Manual per account+region, **has a review delay — request first** |
 | 3 | **CockroachDB Cloud cluster + DSNs** (`cascade_app`, `cascade_worker`, `cascade_readonly`) | Production DB; where the vector-index EXPLAIN must be re-proven |
 | 4 | GitHub repo + PAT *(optional)* | Amplify CI builds; without it `06` does a manual zip deploy |
@@ -87,7 +123,7 @@ The LLM layer is provider-pluggable, so development needs no AWS at all:
 |----------|---------|--------|
 | Bedrock | AWS creds | everything — **primary**, the AWS story |
 | Groq | `GROQ_API_KEY` | planner + fast calls (tool-calling capable) |
-| OpenRouter | `OPENROUTER_API_KEY` | planner fallback (`:free` models) |
+| OpenRouter | `OPENROUTER_API_KEY` | planner fallback. `:free` slugs churn — re-verify tool calling when repinning |
 | HuggingFace | `HF_API_KEY` | embeddings — `BAAI/bge-large-en-v1.5` is **1024-d**, matching `VECTOR(1024)` exactly |
 | *(none)* | — | deterministic local planner + hashed embedder |
 
@@ -348,6 +384,22 @@ committing.
 sequence; provenance is the union of all members pinned at *head*; confidence is
 the **minimum** of the members; members are archived, not deleted.
 
+**A real model overfits preconditions; the local planner did not.** The first
+compile on Groq produced the precondition *"The incident is of severity 'P1'"*.
+INC-1001 is P1 and INC-1002 is P2, so the runbook matched on retrieval and then
+refused itself — reuse silently died and the headline demo step went cold. The
+model described *the incident it saw* rather than *when the procedure applies*,
+and the deterministic fallback had never exposed this because it built
+preconditions from a fixed template.
+
+The compiler prompt now forbids encoding incidental properties (severity,
+service name, incident id, timestamp) and steers toward what policy actually
+gates on: kind, state, tier, deploy age. After the fix INC-1002 goes **guided**.
+Worth watching: compiled preconditions are model output, so they are a quality
+surface that only shows up as a *retrieval hit followed by a precondition miss*.
+That pair in `/api/metrics` is the signal — a hit with a miss is not a near
+miss, it is a runbook that cannot be reused.
+
 **D3 is stricter than it reads.** One `WHERE embedding IS NOT NULL` was enough to
 drop the vector index and full-scan. Phase 1 carries *no* predicate at all.
 
@@ -531,6 +583,21 @@ cd frontend && npm run build                           # compiles + typechecks
 CASCADE_STUB_MODE=true …                               # every endpoint, no DB
 ```
 
+**81/81 green on real providers** (Groq + HuggingFace), not just on the local
+fallback. Getting there needed two Copilot fixes, both only reachable with a
+real model writing the SQL:
+
+- **Prose leaked into the validator.** Smaller models emit the statement, a
+  semicolon, then a sentence explaining it. The validator saw an interior
+  semicolon and refused the whole thing as multi-statement. Extraction now
+  drops a trailing remainder **only when it is not itself SQL** — so
+  `SELECT 1; DELETE FROM rules` is still refused outright rather than quietly
+  reduced to its harmless first half. All 4 injection refusals re-verified.
+- **Hallucinated columns.** Groq wrote `playbooks.rule_key`, which does not
+  exist; runbooks relate to rules only through `playbook_deps`. The prompt now
+  states that explicitly and shows the staleness join, and execution failure
+  falls back to the matching built-in query while *saying* that is what ran.
+
 `verify_integration.py` **refuses to run in stub mode**, so a green result can
 never be a canned one. It talks to the engine directly rather than over HTTP —
 the interrupt case needs a task already carrying `interrupt_flag` before
@@ -550,8 +617,8 @@ TTL scoping · generalization lineage · all 11 contract signatures.
 
 | # | Risk | Status |
 |---|------|--------|
-| 1 | **Bedrock unavailable** | 🔴 Engine degraded. Clients implemented, auto-activate on credentials. Headline latency and Titan-quality retrieval both unverified |
-| 2 | **Latency figure** | ⚠️ Do not quote a multiplier measured in degraded mode |
+| 1 | **Bedrock unavailable** | 🟡 Downgraded. Groq + HuggingFace now serve the full loop, so the engine is *not* on the local planner. Only the "runs on Bedrock" claim is unproven |
+| 2 | **Latency figure** | ✅ Resolved. **3.31×** measured on Groq (6,561ms → 1,981ms). Say which provider when quoting it |
 | 3 | **Vector index on Cloud** | ⚠️ Verified locally; must be re-proven on the Cloud cluster |
 | 4 | **No authentication** | ⚠️ By design for the demo. Gate with `DEMO_PASSWORD` if the link goes wide |
 | 5 | **Deployment never executed** | ⚠️ Scripts syntax-checked only; first run will surface AWS-side surprises |

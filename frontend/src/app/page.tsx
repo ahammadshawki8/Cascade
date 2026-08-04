@@ -899,7 +899,7 @@ export default function CascadeApp() {
 
         <StatusBar
           llm={metrics?.llm}
-          llmProvider={metrics?.llm === "degraded" ? "local / fallback" : "bedrock"}
+          llmProvider={metrics?.llm_provider}
           connected={connected}
           running={counts.running ?? 0}
           succeeded={counts.succeeded ?? 0}

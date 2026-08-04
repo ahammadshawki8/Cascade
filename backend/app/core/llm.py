@@ -161,6 +161,28 @@ def active_provider() -> str | None:
     return _active_provider
 
 
+def serving_provider() -> str:
+    """Which provider is serving *chat*, for the persistent status indicator.
+
+    Deliberately not `active_provider()`, which records whichever provider was
+    hit most recently. Chat and embeddings fall back independently, so that
+    value flaps between "groq" and "huggingface" depending on whether the last
+    thing to run was a plan or an embed, and a status light that changes on its
+    own tells the operator nothing.
+
+    It also answers before the first call, where `active_provider()` is still
+    None: reporting "local" then would name the deterministic planner while a
+    perfectly good Groq key sits configured. `/api/admin/smoke` remains the
+    place that reports chat and embeddings separately.
+    """
+    if providers.bedrock_client() is not None:
+        return "bedrock"
+    chain = providers.available_openai_providers()
+    if chain:
+        return chain[0]
+    return "local"
+
+
 def degraded_reason() -> str | None:
     return _degraded_reason
 

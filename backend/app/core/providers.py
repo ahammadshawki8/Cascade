@@ -46,8 +46,12 @@ _OPENAI_COMPATIBLE = {
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "env": "OPENROUTER_API_KEY",
-        "default_chat": "meta-llama/llama-3.3-70b-instruct:free",
-        "default_fast": "meta-llama/llama-3.3-70b-instruct:free",
+        # llama-3.3-70b-instruct:free stopped being free and now 404s with a
+        # message pointing at the paid slug. Both of these were verified to
+        # return a tool call for the planner prompt; a model that cannot call
+        # tools is useless here no matter how good its prose is.
+        "default_chat": "nvidia/nemotron-3-super-120b-a12b:free",
+        "default_fast": "openai/gpt-oss-20b:free",
     },
 }
 
@@ -256,8 +260,13 @@ async def huggingface_embed(text: str, model: str | None = None) -> list[float] 
         import httpx
 
         async with httpx.AsyncClient(timeout=45.0) as client:
+            # HuggingFace retired api-inference.huggingface.co; that host no
+            # longer resolves at all, so the old URL failed in DNS rather than
+            # returning a status we could log usefully. Inference now goes
+            # through the router, with the provider named in the path.
             response = await client.post(
-                f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}",
+                "https://router.huggingface.co/hf-inference/models/"
+                f"{model}/pipeline/feature-extraction",
                 json={"inputs": text, "options": {"wait_for_model": True}},
                 headers={"Authorization": f"Bearer {api_key}"},
             )

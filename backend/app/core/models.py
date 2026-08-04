@@ -323,6 +323,12 @@ class Metrics(BaseModel):
     retrieval: RetrievalMetrics = Field(default_factory=RetrievalMetrics)
     counts_by_status: dict[str, int] = Field(default_factory=dict)
     llm: Literal["ok", "degraded"] = "ok"
+    # "degraded" only means "not Bedrock". It covers both a real fallback
+    # provider and the local planner, and those are very different situations
+    # for anyone reading the latency numbers, so name the provider rather than
+    # letting the UI guess from the status alone.
+    llm_provider: str | None = None
+    llm_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------

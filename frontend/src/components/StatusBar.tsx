@@ -44,9 +44,11 @@ export function StatusBar({
         className={`${styles.item} ${styles.button}`}
         onClick={onOpenIntelligence}
         title={
-          degraded
-            ? `Running on ${llmProvider ?? "the local deterministic planner"} rather than Bedrock. Latency comparisons are not meaningful in this mode.`
-            : "Bedrock is serving requests."
+          !degraded
+            ? "Bedrock is serving requests."
+            : !llmProvider || llmProvider === "local"
+              ? "No model provider reachable. Running on the local deterministic planner, so latency comparisons are not meaningful."
+              : `Running on ${llmProvider} rather than Bedrock. These are real model calls, so latency comparisons hold; only the Bedrock claim does not.`
         }
       >
         <span

@@ -149,7 +149,14 @@ Rules:
 - Replace the concrete incident id with the placeholder {incident_id}.
 - apply_remediation must be preceded by check_remediation_eligibility.
 - Never include idempotency_key; the executor injects it.
-- Cite only rule_keys that appear in the trajectory's get_rules output."""
+- Cite only rule_keys that appear in the trajectory's get_rules output.
+- Preconditions state when this runbook applies IN GENERAL. They must not
+  encode incidental properties of the one incident it was learned from: no
+  specific severity (P1, P2, ...), no specific service name, no specific
+  incident id, no specific timestamp or date. A precondition only the training
+  incident can satisfy makes the runbook permanently unreusable.
+  Prefer the conditions policy actually gates on: incident kind, incident
+  state, service tier, and how long ago the deploy happened."""
 
 
 async def _extract_spec(
