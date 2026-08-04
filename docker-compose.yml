@@ -1,0 +1,39 @@
+services:
+  crdb:
+    image: cockroachdb/cockroach:latest
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"   # SQL
+      - "8080:8080"     # DB console -> http://localhost:8080
+    volumes:
+      - crdb-data:/cockroach/cockroach-data
+    healthcheck:
+      test: ["CMD", "./cockroach", "sql", "--insecure", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Fargate rejects arm64 images. Building amd64 locally keeps local and
+    # deployed identical (spec §D3 of SETUP.md).
+    platform: linux/amd64
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://root@crdb:26257/cascade?sslmode=disable
+    depends_on:
+      crdb:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app       # hot reload during development
+      - ./backend/worker:/app/worker
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    profiles: ["api"]                # `docker compose --profile api up`
+
+volumes:
+  crdb-data:

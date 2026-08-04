@@ -1,0 +1,72 @@
+.bar {
+  height: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  background-color: var(--bg-chrome);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  height: 100%;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.button {
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.12s ease-out, color 0.12s ease-out;
+}
+
+.button:hover {
+  background-color: var(--surface-hover);
+  color: var(--text);
+}
+
+.button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.spacer { flex: 1; }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOk { background-color: var(--st-active); }
+.dotWarn { background-color: var(--st-suspect); }
+.dotBad { background-color: var(--st-invalid); }
+
+.value {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  color: var(--text);
+}
+
+.muted { color: var(--text-dimmer); }
+
+.kbd {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 10px;
+  padding: 1px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-dim);
+}

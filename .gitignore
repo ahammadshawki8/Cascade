@@ -1,67 +1,46 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-venv/
-ENV/
-env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Environment
+# --- Secrets — never commit ---------------------------------------------
 .env
 .env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
 
-# Logs
-*.log
+# --- Python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
 
-# OS
+# --- Node / Next.js ------------------------------------------------------
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+
+# --- AWS / deploy artifacts ---------------------------------------------
+*.zip
+.aws-sam/
+lambda-package/
+
+# --- Local data ----------------------------------------------------------
+cockroach-data/
+*.db
+
+# --- Editor / OS ---------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
 .DS_Store
 Thumbs.db
 
-# Ruff
-.ruff_cache/
-
-# Temporary files
-*.tmp
-*.bak
-
-# AI-generated files to avoid
-CHANGES.md
-UPDATES.md
-SUMMARY.md
-COMPLETION.md
-STATUS.md
-REPORT.md
-*_SUMMARY.md
-*_COMPLETE.md
+# --- Media working files (keep final assets in docs/) --------------------
+recordings/
+*.mkv

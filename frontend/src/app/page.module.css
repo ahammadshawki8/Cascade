@@ -1,0 +1,236 @@
+/* Desktop application shell.
+   activity bar | (header · metrics · view) with a status bar underneath.
+   Fixed viewport height — the shell never scrolls, only the view inside it. */
+
+.shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--bg);
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewport {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- header ---------------------------------------------------------------- */
+
+.header {
+  height: var(--header-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg);
+}
+
+.viewTitle {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.viewHint {
+  font-size: 12px;
+  color: var(--text-dimmer);
+}
+
+.headerSpacer { flex: 1; }
+
+.headerAction {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.12s ease-out, border-color 0.12s ease-out;
+}
+
+.headerAction:hover { color: var(--text); border-color: var(--text-faint); }
+
+/* --- metric strip ---------------------------------------------------------- */
+
+.metrics {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg);
+}
+
+/* --- guided tour ----------------------------------------------------------- */
+
+.tour {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.tourDismiss {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--text-dimmer);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  z-index: 2;
+}
+
+.tourDismiss:hover { color: var(--text); background-color: var(--surface-hover); }
+
+/* --- view content ---------------------------------------------------------- */
+
+.view {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+/* Two-pane split for views that pair a primary with a secondary panel. */
+.split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.paneDivider { border-left: 1px solid var(--border); }
+
+.full {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- toast ----------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  z-index: 900;
+  animation: toastIn 0.14s ease-out;
+}
+
+@keyframes toastIn {
+  from { transform: translate(-50%, 6px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+/* --- modal ----------------------------------------------------------------- */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 800;
+}
+
+.modal {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 20px;
+  min-width: 560px;
+  max-width: 90vw;
+  max-height: 72vh;
+  overflow: auto;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.modalTitle {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+
+.table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  padding: 5px 6px;
+  color: var(--text-dimmer);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--text-dimmer);
+  padding: 24px;
+  text-align: center;
+}
+
+.markdown {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  font-family: var(--font-ibm-plex-mono), monospace;
+}

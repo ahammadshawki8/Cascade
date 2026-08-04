@@ -1,0 +1,303 @@
+#!/bin/bash
+# Cascade — AWS Infrastructure Bootstrap
+# Day 14-16: Deploy infrastructure (ECS, Lambda, S3, SQS, CloudFront, etc.)
+
+set -euo pipefail
+
+# Configuration
+REGION="${AWS_REGION:-us-east-1}"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+PROJECT_NAME="cascade"
+ENV="${ENVIRONMENT:-demo}"
+
+echo "=== Cascade AWS Infrastructure Bootstrap ==="
+echo "Region: $REGION"
+echo "Account: $ACCOUNT_ID"
+echo "Environment: $ENV"
+echo ""
+
+# ============================================================================
+# S3: Episodes storage
+# ============================================================================
+
+BUCKET_NAME="${PROJECT_NAME}-episodes-${ACCOUNT_ID}"
+echo "Creating S3 bucket: $BUCKET_NAME"
+
+aws s3api create-bucket \
+    --bucket "$BUCKET_NAME" \
+    --region "$REGION" \
+    --create-bucket-configuration LocationConstraint="$REGION" \
+    2>/dev/null || echo "Bucket already exists"
+
+aws s3api put-bucket-versioning \
+    --bucket "$BUCKET_NAME" \
+    --versioning-configuration Status=Enabled
+
+aws s3api put-bucket-lifecycle-configuration \
+    --bucket "$BUCKET_NAME" \
+    --lifecycle-configuration '{
+        "Rules": [{
+            "Id": "archive-old-episodes",
+            "Status": "Enabled",
+            "Transitions": [{
+                "Days": 90,
+                "StorageClass": "GLACIER"
+            }]
+        }]
+    }'
+
+echo "✓ S3 bucket created: $BUCKET_NAME"
+echo ""
+
+# ============================================================================
+# SQS: Event queue
+# ============================================================================
+
+QUEUE_NAME="${PROJECT_NAME}-events"
+echo "Creating SQS queue: $QUEUE_NAME"
+
+QUEUE_URL=$(aws sqs create-queue \
+    --queue-name "$QUEUE_NAME" \
+    --attributes '{
+        "VisibilityTimeout": "300",
+        "MessageRetentionPeriod": "86400",
+        "ReceiveMessageWaitTimeSeconds": "10"
+    }' \
+    --query QueueUrl \
+    --output text 2>/dev/null || aws sqs get-queue-url --queue-name "$QUEUE_NAME" --query QueueUrl --output text)
+
+echo "✓ SQS queue ready: $QUEUE_URL"
+echo ""
+
+# ============================================================================
+# Secrets Manager: Database DSNs and tokens
+# ============================================================================
+
+echo "Creating Secrets Manager secrets..."
+
+# Note: These are placeholders - replace with actual values
+aws secretsmanager create-secret \
+    --name "${PROJECT_NAME}/dsn-app" \
+    --description "CockroachDB connection string for API (cascade_app role)" \
+    --secret-string "postgresql://cascade_app:CHANGEME@cluster.cockroachlabs.cloud:26257/cascade?sslmode=verify-full" \
+    2>/dev/null || echo "Secret cascade/dsn-app already exists"
+
+aws secretsmanager create-secret \
+    --name "${PROJECT_NAME}/dsn-worker" \
+    --description "CockroachDB connection string for Lambda worker (cascade_worker role)" \
+    --secret-string "postgresql://cascade_worker:CHANGEME@cluster.cockroachlabs.cloud:26257/cascade?sslmode=verify-full" \
+    2>/dev/null || echo "Secret cascade/dsn-worker already exists"
+
+aws secretsmanager create-secret \
+    --name "${PROJECT_NAME}/dsn-readonly" \
+    --description "CockroachDB connection string for Ops Copilot (cascade_readonly role)" \
+    --secret-string "postgresql://cascade_readonly:CHANGEME@cluster.cockroachlabs.cloud:26257/cascade?sslmode=verify-full" \
+    2>/dev/null || echo "Secret cascade/dsn-readonly already exists"
+
+aws secretsmanager create-secret \
+    --name "${PROJECT_NAME}/admin-token" \
+    --description "Admin token for mutation endpoints" \
+    --secret-string "$(openssl rand -hex 32)" \
+    2>/dev/null || echo "Secret cascade/admin-token already exists"
+
+aws secretsmanager create-secret \
+    --name "${PROJECT_NAME}/internal-sse" \
+    --description "Shared secret for Lambda -> API /internal/sse bridge" \
+    --secret-string "$(openssl rand -hex 32)" \
+    2>/dev/null || echo "Secret cascade/internal-sse already exists"
+
+echo "✓ Secrets created"
+echo ""
+
+# ============================================================================
+# IAM: Roles
+# ============================================================================
+
+echo "Creating IAM roles..."
+
+# ECS Task Execution Role (pulls images, reads secrets)
+cat > /tmp/ecs-trust-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+    --role-name "${PROJECT_NAME}-ecs-execution-role" \
+    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
+    2>/dev/null || echo "Role already exists"
+
+aws iam attach-role-policy \
+    --role-name "${PROJECT_NAME}-ecs-execution-role" \
+    --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+# ECS Task Role (application permissions)
+aws iam create-role \
+    --role-name "${PROJECT_NAME}-ecs-task-role" \
+    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
+    2>/dev/null || echo "Role already exists"
+
+# Attach inline policy for task role
+cat > /tmp/ecs-task-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::${BUCKET_NAME}/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sqs:SendMessage",
+        "sqs:GetQueueUrl"
+      ],
+      "Resource": "arn:aws:sqs:${REGION}:${ACCOUNT_ID}:${QUEUE_NAME}"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:secret:${PROJECT_NAME}/*"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+    --role-name "${PROJECT_NAME}-ecs-task-role" \
+    --policy-name "${PROJECT_NAME}-ecs-permissions" \
+    --policy-document file:///tmp/ecs-task-policy.json
+
+# Lambda Execution Role
+cat > /tmp/lambda-trust-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "lambda.amazonaws.com"},
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+    --role-name "${PROJECT_NAME}-lambda-role" \
+    --assume-role-policy-document file:///tmp/lambda-trust-policy.json \
+    2>/dev/null || echo "Role already exists"
+
+aws iam attach-role-policy \
+    --role-name "${PROJECT_NAME}-lambda-role" \
+    --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+# Lambda inline policy
+cat > /tmp/lambda-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::${BUCKET_NAME}/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:SendMessage"
+      ],
+      "Resource": "arn:aws:sqs:${REGION}:${ACCOUNT_ID}:${QUEUE_NAME}"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:secret:${PROJECT_NAME}/*"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+    --role-name "${PROJECT_NAME}-lambda-role" \
+    --policy-name "${PROJECT_NAME}-lambda-permissions" \
+    --policy-document file:///tmp/lambda-policy.json
+
+echo "✓ IAM roles created"
+echo ""
+
+# ============================================================================
+# ECR: Container registry
+# ============================================================================
+
+REPO_NAME="${PROJECT_NAME}-api"
+echo "Creating ECR repository: $REPO_NAME"
+
+aws ecr create-repository \
+    --repository-name "$REPO_NAME" \
+    --region "$REGION" \
+    2>/dev/null || echo "Repository already exists"
+
+ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}"
+echo "✓ ECR repository: $ECR_URI"
+echo ""
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+echo "=== Bootstrap Complete ==="
+echo ""
+echo "Resources created:"
+echo "  S3 Bucket: $BUCKET_NAME"
+echo "  SQS Queue: $QUEUE_URL"
+echo "  ECR Repository: $ECR_URI"
+echo ""
+echo "Next steps:"
+echo "1. Update secrets with real CockroachDB connection strings:"
+echo "   aws secretsmanager update-secret --secret-id ${PROJECT_NAME}/dsn-app --secret-string 'postgresql://...'"
+echo ""
+echo "2. Build and push Docker image:"
+echo "   cd ../backend"
+echo "   docker build -t ${PROJECT_NAME}-api ."
+echo "   aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ECR_URI"
+echo "   docker tag ${PROJECT_NAME}-api:latest $ECR_URI:latest"
+echo "   docker push $ECR_URI:latest"
+echo ""
+echo "3. Create ECS cluster, task definition, and service (see 04_deploy_ecs.sh)"
+echo ""
+echo "4. Create Lambda function and event source mapping (see 05_deploy_lambda.sh)"
+echo ""
+echo "5. Deploy frontend to Amplify (see 06_deploy_frontend.sh)"

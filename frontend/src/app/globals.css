@@ -1,0 +1,124 @@
+:root {
+  /* Surfaces — cool near-black, never pure #000 (compresses badly on video) */
+  --bg:            #0B0E10;
+  --surface:       #14181B;   /* panels */
+  --raised:        #1B2024;   /* cards inside panels, inputs */
+  --border:        #262C31;
+  --border-strong: #333B42;   /* hover, focus rings */
+
+  /* Text */
+  --text:          #E8EDF0;
+  --text-dim:      #97A3AB;
+  --text-faint:    #626E77;   /* never for anything load-bearing */
+
+  /* Accent — the system's own voice: links, focus, active tab, the agent's turn.
+     Cyan deliberately: not purple (AI cliché), not green/amber/red (reserved). */
+  --accent:        #3ECFD6;
+  --accent-dim:    #1F7C82;
+
+  /* Status — SEMANTIC ONLY. Never use these for anything but runbook/task state. */
+  --st-candidate:  #7D8590;   /* unproven */
+  --st-active:     #3FB950;   /* trusted */
+  --st-suspect:    #D29922;   /* quarantined */
+  --st-invalid:    #F85149;   /* stale */
+  --st-rejected:   #484F58;   /* terminal, + strikethrough */
+
+  /* --- Application chrome (activity bar, status bar, palette) -------------
+     Chrome sits *behind* the work: slightly darker than the content surface so
+     panels read as raised without needing borders everywhere. */
+  --bg-chrome:      #080B0D;
+  --surface-raised: #1B2024;   /* alias of --raised, named for the shell */
+  --surface-hover:  #1E242940;
+  --text-dimmer:    #626E77;   /* alias of --text-faint */
+  --accent-soft:    #3ECFD622;
+
+  --radius:      8px;
+  --radius-sm:   6px;
+  --header-h:    38px;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-ibm-plex-sans), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Base focus style for a11y floor */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Scrollbars — invisible until used, VS Code style.
+   A dark tool with a dozen scrollable panes gets visually noisy fast if every
+   one of them carries a permanent grey track. These reserve no layout space
+   and only surface a thumb on hover, so the chrome disappears until it is
+   needed. Desktop-only by design, which is the stated target.
+   --------------------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 6px;
+  /* Transparent border + background-clip keeps the thumb visually inset,
+     so it floats over the content rather than sitting in a gutter. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.15s ease-out;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* The application shell is exactly 100vh and clips its own overflow, so the
+   page never scrolls there without needing `overflow: hidden` here. Keeping it
+   global would break the docs site, which is a normal scrolling document. */
+html, body {
+  height: 100%;
+}
+
+button {
+  font-family: inherit;
+}

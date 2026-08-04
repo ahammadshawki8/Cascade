@@ -1,0 +1,225 @@
+.rail {
+  width: 320px;
+  background-color: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Promoted from a 320px side rail to a full view in the shell. Approvals are
+   a primary destination now, not an overflow drawer. */
+.railEmbedded {
+  width: 100%;
+  border-left: none;
+  background-color: var(--bg);
+}
+
+.railEmbedded .body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 20px;
+  align-content: start;
+}
+
+.header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closeBtn:hover {
+  color: var(--text);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+}
+
+.card {
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.cardTitle {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.cardTime {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.cardBody {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.highlight {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.insightAction {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.insightAction:hover {
+  text-decoration: underline;
+}
+
+.approvalDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  background-color: var(--bg);
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.approvalDetailRow {
+  display: flex;
+  justify-content: space-between;
+}
+
+.approvalLabel {
+  color: var(--text-dim);
+}
+
+.approvalVal {
+  color: var(--text);
+}
+
+.approvalScore {
+  color: var(--st-suspect);
+}
+
+.approvalActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn {
+  flex: 1;
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.btnApprove {
+  background-color: var(--st-active);
+  color: var(--bg);
+  border: none;
+}
+
+.btnReject {
+  background-color: transparent;
+  color: var(--text);
+}
+
+.rejectInput {
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+  margin-top: 8px;
+  outline: none;
+  width: 100%;
+}
+
+.rejectInput:focus {
+  border-color: var(--accent);
+}
+
+.rejectSubmit {
+  background-color: var(--st-invalid);
+  color: var(--bg);
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.emptyState {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px 0;
+}

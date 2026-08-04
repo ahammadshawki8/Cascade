@@ -1,0 +1,198 @@
+.copilot {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--bg);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.suggestionsTitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.suggestionChip {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 8px 16px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.14s;
+}
+
+.suggestionChip:hover {
+  background-color: var(--raised);
+  border-color: var(--border-strong);
+}
+
+.answerBox {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.question {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.refusal {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.tableWrapper {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: var(--surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.th, .td {
+  padding: 8px 12px;
+  text-align: left;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.th {
+  color: var(--text-dim);
+  font-weight: 500;
+  background-color: var(--raised);
+}
+
+.td {
+  color: var(--text);
+}
+
+.tr:last-child .td {
+  border-bottom: none;
+}
+
+.sqlWrapper {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sqlHeader {
+  padding: 8px 12px;
+  background-color: var(--raised);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.sqlHeader:hover {
+  color: var(--text);
+}
+
+.sqlCode {
+  padding: 12px;
+  background-color: var(--surface);
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 13px;
+  color: var(--accent);
+  white-space: pre-wrap;
+  border-top: 1px solid var(--border);
+}
+
+.disclaimer {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.footer {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.inputWrapper {
+  display: flex;
+  gap: 12px;
+}
+
+.input {
+  flex: 1;
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.submitBtn {
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.submitBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,628 @@
+/* ===========================================================================
+   Documentation site
+   Shares the application's tokens so the docs never look like a different
+   product. Reading-optimised rather than density-optimised: wider line height,
+   a hard measure cap, and generous vertical rhythm.
+   =========================================================================== */
+
+.shell {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* --- sidebar ------------------------------------------------------------- */
+
+.sidebar {
+  width: 250px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background-color: var(--bg-chrome);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebarBrand {
+  display: flex;
+  align-items: center;
+  padding: 20px 22px 18px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.sidebarScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 12px 24px;
+}
+
+.navSection { margin-bottom: 22px; }
+
+.navTitle {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-dimmer);
+  padding: 0 10px 8px;
+}
+
+.navLink {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: color 0.12s ease-out, background-color 0.12s ease-out;
+}
+
+.navLink:hover {
+  color: var(--text);
+  background-color: var(--surface-hover);
+}
+
+.navLinkActive {
+  color: var(--text);
+  background-color: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.sidebarFooter {
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dimmer);
+  text-decoration: none;
+}
+
+.sidebarFooter:hover { color: var(--text); }
+
+/* --- content ------------------------------------------------------------- */
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  padding: 56px 48px 96px;
+}
+
+.article {
+  width: 100%;
+  /* ~75 characters. Past that, the eye loses the line on return sweep. */
+  max-width: 760px;
+}
+
+.pageHeader {
+  margin-bottom: 44px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.h1 {
+  font-size: 38px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 16px;
+  color: var(--text);
+}
+
+.lede {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin: 0;
+  max-width: 62ch;
+}
+
+.section { margin-bottom: 52px; }
+
+.h2 {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 18px;
+  color: var(--text);
+  scroll-margin-top: 24px;
+  position: relative;
+}
+
+.anchor {
+  position: absolute;
+  left: -22px;
+  color: var(--text-dimmer);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  font-weight: 400;
+}
+
+.h2:hover .anchor { opacity: 1; }
+
+.subsection { margin: 30px 0; }
+
+.h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--text);
+  scroll-margin-top: 24px;
+}
+
+.article p {
+  font-size: 15px;
+  line-height: 1.72;
+  color: var(--text-dim);
+  margin: 0 0 17px;
+}
+
+.article strong { color: var(--text); font-weight: 600; }
+
+.article a { color: var(--accent); text-decoration: none; }
+.article a:hover { text-decoration: underline; }
+
+.article ul, .article ol {
+  font-size: 15px;
+  line-height: 1.72;
+  color: var(--text-dim);
+  padding-left: 22px;
+  margin: 0 0 17px;
+}
+
+.article li { margin-bottom: 7px; }
+
+.article hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 40px 0;
+}
+
+.article blockquote {
+  margin: 0 0 17px;
+  padding-left: 16px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-dim);
+  font-style: normal;
+}
+
+/* --- code ---------------------------------------------------------------- */
+
+.inlineCode {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.codeFigure {
+  margin: 0 0 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background-color: var(--surface);
+}
+
+.codeCaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-chrome);
+}
+
+.codeLang {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 11px;
+  color: var(--text-dimmer);
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dimmer);
+  cursor: pointer;
+  transition: color 0.12s ease-out, border-color 0.12s ease-out,
+    background-color 0.12s ease-out;
+}
+
+.copyButton:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background-color: var(--surface-hover);
+}
+
+.copyButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text);
+  tab-size: 2;
+}
+
+/* Shiki emits its own <pre>; override its background so the block matches the
+   surrounding surface instead of the theme's default. */
+.shiki :global(pre) {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background-color: var(--surface) !important;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.shiki :global(code) {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* --- diagrams ------------------------------------------------------------ */
+
+.diagram {
+  margin: 0 0 22px;
+  padding: 22px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+}
+
+.diagramCanvas {
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.diagramCanvas :global(svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Belt and braces for label clipping. Mermaid is told the resolved font stack
+   so its measurements match what it draws, but a foreignObject still clips at
+   its declared width, and a rounding error of a pixel is enough to shave a
+   descender off. Letting the label overflow its box costs nothing: the box is
+   invisible, and the node rectangle around it is drawn separately. */
+.diagramCanvas :global(svg foreignObject) {
+  overflow: visible;
+}
+
+/* Mermaid measures each label in a detached div on <body>, where line-height
+   is `normal`, then renders it here where its own stylesheet sets 1.5. That is
+   ~4px of drift per line, so a three-line label overflowed its box by 9px and
+   the last line was cut off. Pinning `normal` makes the rendered height equal
+   the measured height, which is what mermaid sized the box from.
+
+   `!important` is load-bearing: mermaid injects an id-scoped <style> inside the
+   svg, and an id selector outranks anything we can write from a stylesheet. */
+.diagramCanvas :global(svg foreignObject div),
+.diagramCanvas :global(svg .nodeLabel),
+.diagramCanvas :global(svg .edgeLabel),
+.diagramCanvas :global(svg .label),
+.diagramCanvas :global(svg p) {
+  line-height: normal !important;
+  margin: 0;
+}
+
+.diagramCaption {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-dimmer);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* --- UI affordances ------------------------------------------------------ */
+
+/* Names a control the reader has to find on screen. */
+.ui {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+/* Keyboard shortcut. */
+.kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  background-color: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+/* Where in the interface something lives. */
+.location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 9px 14px;
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background-color: var(--accent-soft);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.locationLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+/* --- callouts ------------------------------------------------------------ */
+
+.callout {
+  margin: 0 0 22px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background-color: var(--surface);
+}
+
+.calloutTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 8px;
+}
+
+.calloutBody { font-size: 14.5px; line-height: 1.68; color: var(--text-dim); }
+.calloutBody :global(p):last-child { margin-bottom: 0; }
+.calloutBody :global(p) { margin: 0 0 12px; font-size: 14.5px; }
+
+.callout_note { border-left-color: var(--accent); }
+.callout_note .calloutTitle { color: var(--accent); }
+
+.callout_warn { border-left-color: var(--st-suspect); }
+.callout_warn .calloutTitle { color: var(--st-suspect); }
+
+.callout_danger { border-left-color: var(--st-invalid); }
+.callout_danger .calloutTitle { color: var(--st-invalid); }
+
+.callout_good { border-left-color: var(--st-active); }
+.callout_good .calloutTitle { color: var(--st-active); }
+
+/* --- tables -------------------------------------------------------------- */
+
+.tableWrap {
+  margin: 0 0 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dimmer);
+  background-color: var(--bg-chrome);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  line-height: 1.6;
+  vertical-align: top;
+}
+
+.table tr:last-child td { border-bottom: none; }
+.table code { font-size: 12px; }
+
+/* --- steps --------------------------------------------------------------- */
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 0 0 22px;
+}
+
+.step {
+  counter-increment: step;
+  position: relative;
+  padding-left: 40px;
+  padding-bottom: 22px;
+  border-left: 1px solid var(--border);
+  margin-left: 13px;
+}
+
+.step:last-child { border-left-color: transparent; padding-bottom: 0; }
+
+.step::before {
+  content: counter(step);
+  position: absolute;
+  left: -13px;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  padding-top: 3px;
+  margin-bottom: 8px;
+}
+
+.stepBody { font-size: 14.5px; line-height: 1.68; color: var(--text-dim); }
+.stepBody :global(p) { margin: 0 0 12px; font-size: 14.5px; }
+
+/* --- definitions --------------------------------------------------------- */
+
+.defs { margin: 0 0 22px; }
+
+.defRow {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.defRow:last-child { border-bottom: none; }
+
+.defTerm {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12.5px;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.defBody {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+/* --- cards --------------------------------------------------------------- */
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 0 0 22px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  text-decoration: none;
+  transition: border-color 0.12s ease-out, background-color 0.12s ease-out;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  background-color: var(--surface-raised);
+  text-decoration: none;
+}
+
+.cardTitle { font-size: 14.5px; font-weight: 600; color: var(--text); }
+.cardBody { font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+
+/* --- pager --------------------------------------------------------------- */
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 56px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+}
+
+.pagerLink {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: border-color 0.12s ease-out;
+  min-width: 190px;
+}
+
+.pagerLink:hover { border-color: var(--border-strong); text-decoration: none; }
+.pagerNext { text-align: right; }
+
+.pagerLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dimmer);
+}
+
+.pagerTitle { font-size: 14px; color: var(--text); font-weight: 500; }
+
+/* Docs are read on laptops but also on tablets in a meeting. */
+@media (max-width: 1000px) {
+  .sidebar { display: none; }
+  .main { padding: 36px 24px 72px; }
+}

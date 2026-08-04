@@ -1,0 +1,132 @@
+.bar {
+  width: 52px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0 12px;
+  background-color: var(--bg-chrome);
+  border-right: 1px solid var(--border);
+  /* Tooltips escape the rail, so it must not clip them. */
+  overflow: visible;
+  z-index: 30;
+}
+
+/* The mark carries the identity on its own — a gradient tile around a letter
+   was doing the work the logo should be doing. */
+.brand {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  align-items: center;
+}
+
+.spacer { flex: 1; }
+
+.item {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-dimmer);
+  cursor: pointer;
+  transition: color 0.12s ease-out, background-color 0.12s ease-out;
+}
+
+.item:hover {
+  color: var(--text);
+  background-color: var(--surface-hover);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.itemActive { color: var(--text); }
+
+/* Active indicator on the left edge, the way VS Code marks the current view. */
+.itemActive::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background-color: var(--accent);
+}
+
+.badge {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background-color: var(--st-suspect);
+  color: #1a1206;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+/* Hover label — the rail is icon-only, so this is how the icons are learnable. */
+.tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 11px;
+  border-radius: 6px;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease-out;
+  z-index: 40;
+}
+
+.item:hover .tooltip,
+.item:focus-visible .tooltip {
+  opacity: 1;
+}
+
+.tooltip strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tooltip em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}

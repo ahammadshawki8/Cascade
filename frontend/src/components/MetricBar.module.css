@@ -1,0 +1,154 @@
+.metricBar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px;
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.primaryStats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.statBlock {
+  display: flex;
+  flex-direction: column;
+}
+
+.statLabel {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.statValue {
+  font-family: var(--font-ibm-plex-sans), sans-serif;
+  font-size: 48px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.deltaChip {
+  font-family: var(--font-ibm-plex-sans), sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--bg);
+  background-color: var(--st-active);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: help;
+}
+
+/* Guided came out slower. Showing that in the "win" colour would misreport
+   the headline metric, so it is styled as the regression it is. */
+.deltaChipRegression {
+  background-color: var(--st-suspect, #f5a524);
+}
+
+.divider {
+  width: 1px;
+  height: 48px;
+  background-color: var(--border);
+}
+
+.secondaryStats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.secondaryStatBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.secondaryLabel {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.secondaryValue {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.statusCounts {
+  display: flex;
+  gap: 12px;
+}
+
+.statusCount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 13px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dotQueued { background-color: var(--text-dim); }
+.dotRunning { background-color: var(--accent); }
+.dotSucceeded { background-color: var(--st-active); }
+.dotFailed { background-color: var(--st-invalid); }
+.dotInterrupted { background-color: var(--st-suspect); }
+
+.llmHealth {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.llmLabel {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.llmDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.llmOk {
+  background-color: var(--st-active);
+}
+
+.llmDegraded {
+  background-color: var(--st-suspect);
+}
+
+/* Inline, not absolutely positioned. Overlaying `top: 100%` dropped it on top
+   of whatever panel sat below the metric strip and hid that panel's header. */
+.degradedStrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background-color: color-mix(in srgb, var(--st-suspect) 14%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--st-suspect) 40%, transparent);
+  color: var(--st-suspect);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.degradedStrip strong {
+  font-weight: 600;
+}

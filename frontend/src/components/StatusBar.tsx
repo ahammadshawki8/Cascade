@@ -1,0 +1,110 @@
+"use client";
+
+import styles from "./StatusBar.module.css";
+
+interface Props {
+  llm?: "ok" | "degraded";
+  llmProvider?: string | null;
+  connected: boolean;
+  running: number;
+  succeeded: number;
+  failed: number;
+  awaitingApproval: number;
+  hitRate?: number;
+  onOpenPalette: () => void;
+  onOpenIntelligence: () => void;
+}
+
+/**
+ * Persistent status strip, VS Code style: ambient state that should always be
+ * visible but never competes with the work.
+ *
+ * The LLM segment names the provider rather than showing a bare green dot —
+ * "it works" and "Bedrock works" are different claims, and the demo must not
+ * blur them.
+ */
+export function StatusBar({
+  llm,
+  llmProvider,
+  connected,
+  running,
+  succeeded,
+  failed,
+  awaitingApproval,
+  hitRate,
+  onOpenPalette,
+  onOpenIntelligence,
+}: Props) {
+  const degraded = llm === "degraded";
+
+  return (
+    <footer className={styles.bar}>
+      <button
+        type="button"
+        className={`${styles.item} ${styles.button}`}
+        onClick={onOpenIntelligence}
+        title={
+          degraded
+            ? `Running on ${llmProvider ?? "the local deterministic planner"} rather than Bedrock. Latency comparisons are not meaningful in this mode.`
+            : "Bedrock is serving requests."
+        }
+      >
+        <span
+          className={`${styles.dot} ${degraded ? styles.dotWarn : styles.dotOk}`}
+        />
+        <span>{llmProvider ?? (degraded ? "local" : "bedrock")}</span>
+      </button>
+
+      <span className={styles.item}>
+        <span
+          className={`${styles.dot} ${connected ? styles.dotOk : styles.dotBad}`}
+        />
+        <span>{connected ? "live" : "disconnected"}</span>
+      </span>
+
+      <span className={styles.item}>
+        CockroachDB <span className={styles.value}>cascade</span>
+      </span>
+
+      <span className={styles.spacer} />
+
+      {awaitingApproval > 0 && (
+        <span className={styles.item}>
+          <span className={`${styles.dot} ${styles.dotWarn}`} />
+          <span className={styles.value}>{awaitingApproval}</span> awaiting approval
+        </span>
+      )}
+
+      {running > 0 && (
+        <span className={styles.item}>
+          <span className={`${styles.dot} ${styles.dotOk}`} />
+          <span className={styles.value}>{running}</span> running
+        </span>
+      )}
+
+      {hitRate !== undefined && (
+        <span className={styles.item}>
+          reuse <span className={styles.value}>{hitRate}%</span>
+        </span>
+      )}
+
+      <span className={styles.item}>
+        <span className={styles.value}>{succeeded}</span> ok
+        {failed > 0 && (
+          <>
+            <span className={styles.muted}>/</span>
+            <span className={styles.value}>{failed}</span> failed
+          </>
+        )}
+      </span>
+
+      <button
+        type="button"
+        className={`${styles.item} ${styles.button}`}
+        onClick={onOpenPalette}
+      >
+        <span className={styles.kbd}>Ctrl K</span>
+      </button>
+    </footer>
+  );
+}

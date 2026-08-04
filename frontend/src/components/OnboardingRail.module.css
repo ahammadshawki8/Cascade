@@ -1,0 +1,176 @@
+.rail {
+  display: flex;
+  align-items: center;
+  background-color: var(--raised);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  transition: height 0.2s ease-out;
+}
+
+.stepsContainer {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  height: 80px;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 24px;
+  position: relative;
+  cursor: default;
+  transition: background-color 0.14s ease-out;
+
+  /* Rendered as a <button> for keyboard access, so the UA chrome has to go.
+     Only border-right is kept — it is the divider between steps. */
+  appearance: none;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.step:disabled {
+  cursor: default;
+}
+
+.step:last-child {
+  border-right: none;
+}
+
+.stepNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid currentColor;
+  flex-shrink: 0;
+}
+
+.stepContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stepTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  transition: color 0.14s ease-out;
+}
+
+.stepDesc {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* States */
+
+.locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.available {
+  cursor: pointer;
+}
+
+.available:hover {
+  background-color: var(--surface);
+}
+
+.available .stepNumber {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.running {
+  background-color: var(--surface);
+}
+
+.running .stepNumber {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.running .stepTitle {
+  color: var(--accent);
+}
+
+.runningUnderline {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background-color: var(--accent);
+  animation: progress 2s infinite ease-in-out;
+}
+
+@keyframes progress {
+  0% { width: 0%; opacity: 1; }
+  50% { width: 100%; opacity: 0.5; }
+  100% { width: 0%; opacity: 1; }
+}
+
+.done .stepNumber {
+  background-color: var(--st-active);
+  border-color: var(--st-active);
+  color: var(--bg);
+}
+
+.done .stepTitle {
+  color: var(--text-dim);
+}
+
+.done .stepDesc {
+  color: var(--text-faint);
+}
+
+/* Completed Rail State */
+
+.railCollapsed {
+  height: 32px;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.collapsedText {
+  color: var(--text-dim);
+}
+
+.collapsedAction {
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.collapsedAction:hover {
+  text-decoration: underline;
+}

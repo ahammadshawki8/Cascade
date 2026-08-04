@@ -1,488 +1,488 @@
-# CASCADE - Track B: Core Memory & AI Engine
+# CASCADE - Agentic Incident Response with Persistent Memory
 
-**CockroachDB × AWS Hackathon Submission**  
-**Track:** Agentic Memory for Incident Response  
-**Owner:** Shawki (Track B - Core Engine)  
-**Partner:** Ashfaq (Track A - Shell: API + Frontend + Infra)  
-**Status:** ✅ Day 0-13 COMPLETE | CODE FREEZE | Ready for Integration
-
----
-
-## 🎯 Project Overview
-
-CASCADE is an on-call SRE remediation agent that learns, reuses, and unlearns incident response playbooks using CockroachDB as persistent memory and AWS Bedrock for AI capabilities.
-
-**Core Innovation:** Point-of-use staleness guarantee - when policy rules change, stale playbooks are quarantined instantly via provenance-derived freshness checks, preventing wrong executions during cascade propagation.
-
-### The Three-Phase Cycle
-
-1. **LEARN** - Agent resolves novel incidents, compiles successful trajectories into reusable playbooks
-2. **REUSE** - Retrieves playbooks via distributed vector search, executes 3-5× faster  
-3. **UNLEARN** - When policy rules change, stale playbooks never execute (point-of-use freshness guarantee)
+**Project:** CockroachDB × AWS Hackathon Submission  
+**Team:** Ashfaq (Track A - Shell) + Shawki (Track B - Core Engine)  
+**Status:** Integrated and verified end-to-end against a live CockroachDB — 34/34 integration assertions passing  
+**Last Updated:** August 4, 2026
 
 ---
 
-## 🏆 Contest Compliance
+## 🎯 What is CASCADE?
 
-### CockroachDB Tools Used (3/2 required)
-1. **Distributed Vector Indexing** - IVFFlat index for runbook retrieval (1024-d Titan V2 embeddings)
-2. **Managed MCP Server** - Dev workflow + Ops Copilot integration
-3. **ccloud CLI** - Cluster provisioning scripts
+CASCADE is an **agentic on-call SRE assistant** that learns, reuses, and unlearns incident response playbooks using CockroachDB as its persistent memory layer.
 
-### AWS Services Used (6/1 required)
-- Amazon Bedrock (Claude Sonnet 5, Claude Haiku 4.5, Titan Embed V2)
-- AWS Lambda (background worker)
-- Amazon S3 (trajectory archives)
-- Amazon SQS (event queue)
-- AWS ECS Fargate (API + executor - Track A)
-- Amazon EventBridge (sweeper schedule)
+### The Core Concept: Learn → Reuse → Unlearn
+
+1. **LEARN** (Cold Run)
+   - Novel incident → Claude explores with tools
+   - Successful trajectory → Compiled playbook
+   - Stored with vector embedding in CockroachDB
+
+2. **REUSE** (Guided Run)
+   - Retrieve similar playbook via vector search
+   - Execute directly (no LLM per-step)
+   - **3-5× faster** than cold run
+
+3. **UNLEARN** (Cascade)
+   - Policy rule changes → **O(1) transaction**
+   - Staleness derived via provenance join
+   - Running tasks interrupted gracefully
+   - Stale playbooks relearned automatically
 
 ---
 
-## 📦 Track B Deliverables (COMPLETE)
+## 🏗️ Architecture
 
-This repository contains **Track B only** (Core Memory & AI Engine). Track A (API, Frontend, Infrastructure) is developed separately by Ashfaq.
-
-### ✅ Core Modules (`core/`)
-- **models.py** - Frozen data models and types
-- **contracts.py** - Frozen function signatures (Track A imports ONLY this)
-- **retrieval.py** - Two-phase vector retrieval with L2 distance
-- **freshness.py** - Point-of-use provenance-derived staleness check
-- **executor.py** - Explore (cold) and guided (warm) execution modes
-- **tools.py** - 5 mock tools with DB backing and idempotency
-- **compiler.py** - Trajectory → playbook compilation with deps extraction
-- **confidence.py** - Lifecycle math (promotion, rejection, decay)
-- **cascade.py** - O(1) rule change transaction (4 writes, zero fan-out)
-- **llm.py** - Bedrock client infrastructure (retry, circuit breaker, budgets)
-- **copilot.py** - Ops Copilot SQL synthesis
-
-### ✅ Worker (`worker/`)
-- **handler.py** - Lambda entry point (SQS + EventBridge)
-- **jobs.py** - Background jobs (compile, rule_changed, relearn)
-
-### ✅ Database (`migrations/`)
-- **001_schema.sql** - Complete schema (frozen Day 0)
-- **002_seed.sql** - Seed data (rules, incidents)
-
-### ✅ Documentation (`docs/`)
-- **query-plans.md** - Vector index EXPLAIN verification
-- **skills-review.md** - Edge cases & Agent Skills integration
-
-### ✅ Additional Files
-- **Claude.md** - Complete technical spec & development memory
-- **DAY0_CONTRACT.md** - Frozen interface contract with Track A
-- **TRACK_B_AUDIT.md** - Day 0-13 implementation verification
-- **Cascade_task_split.md** - Work split agreement
-- **db.py** - Database wrapper with retry logic
-- **verify.py** - Environment verification script
+```
+┌─────────────────┐
+│   Next.js UI    │ ← SSE streaming, real-time updates
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  FastAPI (ECS)  │ ← 7 routers + InterruptBus
+└────────┬────────┘
+         │
+┌────────▼────────────────────────────────┐
+│         Core Engine (Track B)           │
+│  ┌──────────┬──────────┬──────────┐    │
+│  │ Executor │ Compiler │ Cascade  │    │
+│  │ Retrieval│ Freshness│ Confidence│    │
+│  └──────────┴──────────┴──────────┘    │
+└────────┬────────────────────────────────┘
+         │
+┌────────▼────────────────────────────────┐
+│      CockroachDB (Distributed)          │
+│  • Playbooks with vector embeddings     │
+│  • Provenance graph (playbook_deps)     │
+│  • Temporal rules (valid_from/valid_to) │
+│  • Transactional outbox                 │
+└─────────────────────────────────────────┘
+         │
+┌────────▼────────┐
+│ Lambda Worker   │ ← SQS + EventBridge sweeper
+│ (Compile, Learn)│
+└─────────────────┘
+```
 
 ---
 
 ## 🚀 Quick Start (Local Development)
 
 ### Prerequisites
+- Docker Desktop (for CockroachDB)
 - Python 3.12+
-- Docker (for local CockroachDB)
-- AWS credentials (for Bedrock, optional for stubs)
+- Node.js 20+
+- npm or yarn
 
-### Setup
-
+### 1. Start CockroachDB
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Start local CockroachDB
-docker run -d -p 26257:26257 \
+docker run -d \
+  --name cascade-crdb \
+  -p 26257:26257 \
+  -p 8080:8080 \
   cockroachdb/cockroach:latest \
   start-single-node --insecure
-
-# 3. Apply migrations
-cd migrations
-cockroach sql --insecure < 001_schema.sql
-cockroach sql --insecure < 002_seed.sql
-
-# 4. Configure environment
-cp .env.example .env
-# Edit .env with your DATABASE_URL and AWS credentials
-
-# 5. Verify setup
-python verify.py
 ```
 
-### Run Tests
+### 2. Run Database Migrations
+```bash
+docker cp backend/migrations/001_schema.sql cascade-crdb:/tmp/
+docker cp backend/migrations/002_seed.sql   cascade-crdb:/tmp/
+docker exec cascade-crdb ./cockroach sql --insecure \
+  -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
+docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=/tmp/001_schema.sql
+docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=/tmp/002_seed.sql
+```
+
+Expect 13 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
+vector index. (`infra/02_migrate.sh` does the same against a remote cluster.)
+
+### 3. Configure Environment
+```bash
+cp .env.example backend/.env
+# Edit backend/.env:
+#   DATABASE_URL=postgresql://root@localhost:26257/cascade?sslmode=disable
+#   CASCADE_STUB_MODE=false      # flipping this to false IS the integration test
+#   RUN_WORKER_IN_PROCESS=true   # local dev has no SQS/Lambda to drain the outbox
+```
+
+### 4. Start Backend
+```bash
+cd backend
+pip install -e .
+python run_local.py
+```
+
+Backend runs at: http://127.0.0.1:8000
+
+> **Why `run_local.py` and not bare `uvicorn`?** psycopg's async mode cannot
+> drive the ProactorEventLoop that asyncio selects by default on Windows, and
+> as of Python 3.14 `set_event_loop_policy` no longer influences the loop
+> uvicorn builds for itself. The launcher constructs a selector loop explicitly.
+> On Linux/macOS `uvicorn app.main:app` works directly, and that is what the
+> Dockerfile runs.
+
+### 5. Start Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs at: http://localhost:3000
+
+---
+
+## 📁 Project Structure
+
+```
+cascade/
+├── backend/                 # FastAPI + Core Engine
+│   ├── app/
+│   │   ├── main.py         # Entry point
+│   │   ├── core/           # Track B engine (11 modules)
+│   │   └── routers/        # Track A API (7 routers)
+│   ├── worker/             # Lambda handlers
+│   └── migrations/         # Database schema
+├── frontend/               # Next.js UI
+│   └── src/
+│       ├── app/           # Main layout + SSE
+│       └── components/    # 8 UI components
+├── infra/                 # Deployment scripts
+├── docs/                  # Documentation
+└── ground_truth/          # Reference specs
+```
+
+---
+
+## 🔧 Key Technologies
+
+### CockroachDB Tools (3 used)
+1. **Distributed Vector Indexing** - ANN playbook retrieval
+2. **MCP Server** - Dev workflow via Claude Code
+3. **ccloud CLI** - Cluster provisioning
+
+### AWS Services
+- **Bedrock** - Claude Sonnet (agent), Haiku (fast), Titan (embeddings)
+- **Lambda** - Background workers
+- **ECS Fargate** - API deployment
+- **S3** - Episode storage
+- **SQS** - Event queue
+- **EventBridge** - Sweeper schedule
+
+### Stack
+- **Backend:** Python 3.12, FastAPI, psycopg3
+- **Frontend:** Next.js 15, TypeScript, React 19
+- **Database:** CockroachDB v26+ (vector index required)
+- **AI:** Anthropic Claude on AWS Bedrock
+
+---
+
+## 📊 Demo Flow
+
+### Step 1: Cold Run (Learn)
+```bash
+# Submit novel incident
+curl -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Remediate INC-1001"}'
+
+# Watch explore mode in UI console
+# ~12s execution → playbook compiled
+```
+
+### Step 2: Warm Run (Reuse)
+```bash
+# Submit similar incident
+curl -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Remediate INC-1002"}'
+
+# Watch guided mode in UI console
+# ~3s execution → 4× faster!
+```
+
+### Step 3: Policy Change (Unlearn)
+```bash
+# Preview the blast radius first — deterministic SQL, no LLM
+curl -X POST http://127.0.0.1:8000/api/rules/incident.rollback_window/dry-run \
+  -H "Content-Type: application/json" \
+  -d '{"body": "Rollback allowed only within {hours} hours of deploy.", "params": {"hours": 4}}'
+
+# Commit it (POST, and it needs the admin token)
+curl -X POST http://127.0.0.1:8000/api/rules/incident.rollback_window \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: dev-admin-token" \
+  -d '{"body": "Rollback allowed only within {hours} hours of deploy.", "params": {"hours": 4}}'
+
+# Watch the cascade in the UI:
+# • cascade transaction commits in ~16-26ms (4 writes, no fan-out)
+# • runbook card flips to `suspect`, provenance dot goes red
+# • running tasks interrupted before their next side-effect
+# • relearn queued for playbooks at confidence ≥0.6 → v2 with supersedes
+```
+
+### Step 4: The point of the whole thing — the freshness gate
+```bash
+curl -X POST http://127.0.0.1:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Remediate INC-1009"}'
+```
+
+The playbook still *matches* by vector distance. It is **refused anyway**,
+because the provenance join says it was compiled against `rollback_window` v1
+and head is now v2. The task falls back to explore and correctly escalates —
+INC-1009's deploy is 5 hours old, outside the new 4-hour window.
+
+Stale knowledge is worse than no knowledge, because the agent would act on it
+confidently. That refusal is the product.
+
+---
+
+## 🧠 Beyond the MVP
+
+| Feature | What it does |
+|---------|--------------|
+| **Autonomy gating** | Irreversible actions on production-critical services stop and wait for a human. Risk is a static property of the tool — the model cannot argue past it. Approving *re-runs* the task; that's safe because every side-effecting tool is idempotent on `{task_id}:{step_index}`. |
+| **Insight engine** | Mines history and proposes policy changes: *"the 4h rollback window is blocking 3 incidents; widening to 31h recovers all 3 and blocks nothing new."* Computed by replay, not extrapolation. |
+| **Semantic triage** | Not every rule change breaks everything. Widening a window can't break a runbook that ran inside the old one. Provably-relaxing changes clear automatically; **uncertain always stays quarantined**. |
+| **Counterfactual replay** | Before committing a policy change, re-decide every historical incident: which would newly be automated, which newly blocked. |
+| **Time travel** | `AS OF SYSTEM TIME` — *"what did the agent believe when it made that call?"*, answered by CockroachDB's MVCC with no event-sourcing layer of our own. |
+| **Negative memory** | Failed approaches become `anti_playbooks` and are injected into the planner prompt as warnings. Advisory only — policy still decides. |
+| **Blast-radius graph** | `rules → runbooks → tasks`, with stale dependencies drawn red. |
+| **Auto postmortems** | Any run that doesn't cleanly remediate gets a writeup grounded in the recorded trajectory. |
+| **Savings ledger** | Tokens, dollars and engineer-hours avoided, measured from episodes. |
+
+---
+
+## 🎓 Key Innovations
+
+### 1. O(1) Cascade Transaction (D1)
+Traditional approach: Mass-update all dependent playbooks (N writes, contention)  
+**CASCADE approach:** 4 writes total, zero fan-out
+- Close old rule version
+- Insert new rule version
+- ONE outbox event
+- ONE audit entry
+
+Staleness detected at retrieval time via provenance join.
+
+### 2. Two-Phase Retrieval (D2)
+Never mix vector ORDER BY with scalar filters (planner risk).  
+**Phase 1:** Pure ANN (20 candidates)  
+**Phase 2:** PK lookup + metadata filter  
+**Phase 3:** Freshness check
+
+### 3. Interrupt Choreography (D4)
+- **In-memory bus:** Microsecond latency for same-instance tasks
+- **Durable flag:** Checked before side-effects
+- **Scratchpad persist:** Resume with fresh rules
+
+### 4. Confidence Lifecycle (D6)
+- New playbook: `candidate` @ 0.30
+- Success: +0.15 (max 0.99)
+- Failure: ×0.6
+- Promote: ≥3 successes + ≥0.60 → `active`
+- Reject: <0.20 → terminal
+- Idle decay: ×0.98 per 7 days
+
+---
+
+## 📈 Performance
+
+Measured locally (CockroachDB v26.2.5, single-node Docker) via
+`backend/verify_integration.py`:
+
+| Metric | Target | Measured | |
+|--------|--------|----------|---|
+| Cascade transaction | <100ms | **16–26ms** | ✅ |
+| Cold run (explore) | — | ~280ms | |
+| Guided run | — | ~33–80ms | |
+| Guided vs cold | ≥3× faster | **3.5–8.5×** | ⚠️ see below |
+| Vector retrieval | <20ms | index-verified | ✅ |
+| P95 task latency | <15s | well under | ✅ |
+
+> ⚠️ **The speedup figure is not yet the real one.** These numbers were taken
+> with Bedrock unavailable, so the explore path used the deterministic local
+> planner and the delta reflects database round-trips only. With a live planner
+> the cold path gains seconds of LLM latency and the gap widens — but the
+> honest number is whatever gets measured then, not this one. `/api/metrics`
+> reports `llm: "ok" | "degraded"` so you can always tell which regime a
+> measurement came from.
+
+---
+
+## 🔒 Security & Safety
+
+### SQL Injection Prevention
+- All queries use parameterized statements
+- No string interpolation
+
+### Idempotency
+- All side-effecting tools use idempotency keys
+- Outbox claim with `UPDATE ... WHERE claimed_at IS NULL`
+
+### Ops Copilot Safety
+- Read-only SQL (SELECT/WITH only)
+- Single statement validation
+- 3s timeout + LIMIT 200 wrapper
+- Executed as `cascade_readonly` role
+
+### Budget Limits
+- 15 steps per task
+- 60s wall clock
+- 25k tokens
+
+---
+
+## 📚 Documentation
+
+### For Users
+- `Claude.md` — integrated project memory, progress, and the roadmap beyond MVP
+- `ground_truth/CASCADE_BUILD_SPEC.md` — complete specification
+
+### For Judges
+- `docs/query-plans.md` — vector index EXPLAIN verification, including the
+  full-scan plan that a single stray predicate produced before it was fixed
+- `docs/skills-review.md` — CockroachDB Agent Skills findings
+- `DEVIATIONS.md` — 10 documented deviations with rationale and impact
+- `backend/verify_integration.py` — the 34 assertions behind every claim above
+
+### For Developers
+- `ground_truth/DAY0_CONTRACT.md` - Frozen interface
+- `ground_truth/ashfaq.md` - Track A implementation notes
+- `ground_truth/Cascade_task_split.md` - Work division
+
+---
+
+## 🚢 Deployment
+
+### Production Deployment (AWS)
+
+**Prerequisites:** AWS credentials, and **Bedrock model access granted manually**
+in the console for the three pinned models — that approval is not instant, so
+request it first or every call returns `AccessDeniedException`.
 
 ```bash
-# Unit tests
-pytest tests/
+cd infra
 
-# Environment verification
-python verify.py
+./01_ccloud_provision.sh     # CockroachDB Cloud cluster
+./02_migrate.sh              # schema + seed + vector index
+
+./03_aws_bootstrap.sh        # S3, SQS, Secrets Manager, IAM, ECR
+
+# Store the real DSNs before anything tries to connect
+aws secretsmanager update-secret --secret-id cascade/dsn-app      --secret-string "postgresql://..."
+aws secretsmanager update-secret --secret-id cascade/dsn-worker   --secret-string "postgresql://..."
+aws secretsmanager update-secret --secret-id cascade/dsn-readonly --secret-string "postgresql://..."
+
+./04_deploy_ecs.sh           # image → ECR, ALB, Fargate service
+./05_deploy_lambda.sh        # worker + SQS trigger + 60s EventBridge sweeper
+./07_deploy_cloudfront.sh    # HTTPS in front of the ALB  ← must precede 06
+./06_deploy_frontend.sh      # Amplify, built against the CloudFront URL
 ```
 
----
+**Order matters.** `07` runs before `06`: `NEXT_PUBLIC_API_URL` is baked in at
+build time, and Amplify serves over https — pointing the frontend at the raw
+http ALB gets every request blocked as mixed content, taking the SSE stream
+with it. `06` refuses to build against a non-https URL for exactly this reason.
 
-## 📊 Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Track A (Ashfaq)                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │  Frontend  │→ │  FastAPI   │→ │    ECS     │            │
-│  │ (Next.js)  │  │  Routers   │  │  Fargate   │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
-│         ↓                ↓                                   │
-└─────────────────────────┼───────────────────────────────────┘
-                          ↓ (imports contracts.py only)
-┌─────────────────────────┼───────────────────────────────────┐
-│                     Track B (Shawki)                        │
-│                          ↓                                   │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │ Contracts  │→ │   Core     │→ │  Worker    │            │
-│  │  (Frozen)  │  │  Modules   │  │  (Lambda)  │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
-│         ↓                ↓                ↓                  │
-│  ┌─────────────────────────────────────────────┐            │
-│  │     CockroachDB (Persistent Memory)          │            │
-│  │  • Vector Index (runbook retrieval)          │            │
-│  │  • Provenance Graph (staleness detection)   │            │
-│  │  • Outbox Pattern (async jobs)               │            │
-│  └─────────────────────────────────────────────┘            │
-│                          ↑                                   │
-│  ┌─────────────────────────────────────────────┐            │
-│  │       AWS Bedrock (AI Capabilities)          │            │
-│  │  • Claude Sonnet 5 (agent + compiler)       │            │
-│  │  • Claude Haiku 4.5 (fast calls)            │            │
-│  │  • Titan Embed V2 (1024-d embeddings)       │            │
-│  └─────────────────────────────────────────────┘            │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🔑 Core Design Decisions
-
-### D1: Staleness is DERIVED (not mass-updated)
-- Point-of-use freshness check via provenance JOIN
-- `status_cache` is UI convenience only (async worker updates)
-- O(1) cascade transaction: 4 writes, zero fan-out, near-zero contention
-- **Guarantee:** No stale playbook execution, even during cascade propagation
-
-### D2: playbook_deps PK Includes Version
-- Primary key: `(playbook_id, rule_key, rule_version)`
-- Enables v1→v2 lineage tracking
-
-### D3: Two-Phase Vector Retrieval + L2 Metric
-- **Phase 1:** Pure ANN query (L2 distance `<->` operator)
-- **Phase 2:** PK lookup + status filter
-- **Phase 3:** Point-of-use freshness check
-- Titan V2 normalized embeddings → L2 ≡ cosine ranking
-
-### D4: Interrupts via Event Bus + Durable Flag
-- In-memory InterruptBus (microsecond delivery)
-- Durable `tasks.interrupt_flag` fallback
-- Check before side-effects (apply_remediation, notify_oncall)
-
-### D5: Outbox Pattern
-- Transaction inserts ONE outbox row
-- Post-commit: best-effort SQS publish (~1s latency)
-- Sweeper: every 60s re-publishes unprocessed >30s old
-- Idempotent worker claims
-
-### D6: MCP Usage
-- **Primary:** Dev workflow via Claude Code + Managed MCP Server
-- **Secondary:** Ops Copilot panel (read-only SQL synthesis)
-- **Impact Analysis:** Deterministic SQL (not LLM)
-
-### D7: Domain = SRE Incident Response
-- Bad deploys → rollback
-- Error spikes → restart
-- Resource exhaustion → scale_up
-- Policy rules govern automation boundaries
-
----
-
-## 📝 Contract Interface
-
-Track A imports ONLY `core/contracts.py`. All functions implemented and tested.
-
-### MVP Functions
-
-```python
-async def retrieve(task_text: str) -> Optional[PlaybookCandidate]
-    """Two-phase vector retrieval for playbook candidates"""
-
-async def check_freshness(playbook_id: UUID) -> FreshnessResult
-    """Point-of-use freshness check (NEVER returns bool)"""
-
-async def run_task(task_id: UUID) -> None
-    """Main executor: explore or guided mode"""
-
-async def change_rule(rule_key, new_body, new_params, actor) -> ImpactResult
-    """O(1) cascade transaction with impact analysis"""
-
-async def answer_analytics_question(question: str) -> CopilotAnswer
-    """Ops Copilot: read-only SQL synthesis"""
-```
-
-### Extension Functions (Ready)
-
-```python
-def decide_autonomy(playbook, step) -> "AUTO_EXECUTE" | "REQUIRES_APPROVAL"
-async def resolve_approval(approval_id, decision, resolved_by) -> None
-async def generate_postmortem(episode_id: UUID) -> str
-async def list_insights(include_dismissed=False) -> list[Insight]
-async def dismiss_insight(insight_id: UUID) -> None
-async def simulate_rule_change(rule_key, new_body, new_params) -> ImpactResult
-```
-
----
-
-## 🗄️ Database Schema Highlights
-
-### Core Tables
-- **rules** - Temporal versioning (valid_from, valid_to)
-- **playbooks** - Compiled runbooks with VECTOR(1024) embeddings
-- **playbook_deps** - Provenance edges (rule_key, rule_version)
-- **tasks** - Working memory with interrupt support
-- **episodes** - Performance history (cold vs guided metrics)
-- **outbox** - Transactional outbox for async jobs
-- **audit_log** - Append-only audit trail
-
-### Critical Indices
-```sql
--- Vector index for Phase 1 ANN
-CREATE INDEX pb_embed_idx ON playbooks 
-  USING ivfflat (embedding vector_l2_ops);
-
--- Current rule version
-CREATE INDEX rules_current_idx ON rules (rule_key, valid_to) 
-  WHERE valid_to IS NULL;
-
--- Running tasks
-CREATE INDEX tasks_running_idx ON tasks (created_at) 
-  WHERE status = 'running';
-```
-
-### Freshness Check (THE Authoritative Staleness Query)
-```sql
-SELECT d.rule_key, d.rule_version AS depends_on, r.version AS head
-FROM playbook_deps d
-JOIN rules r ON r.rule_key = d.rule_key AND r.valid_to IS NULL
-WHERE d.playbook_id = $1 AND r.version <> d.rule_version;
--- Empty result = fresh | Rows returned = stale
-```
-
----
-
-## 🎬 The Three Core Workflows
-
-### Workflow A: LEARN (Cold Run - Explore Mode)
-1. Task submitted → retrieval finds no candidate
-2. **Explore mode:** Claude Sonnet converse loop
-3. Tools called: get_rules → get_incident → check_eligibility → apply_remediation → notify_oncall
-4. Every step streamed over SSE
-5. Episode written (CRDB + S3)
-6. Outbox compile event → Lambda worker compiles playbook
-7. Playbook stored with dependencies + embedding
-
-### Workflow B: REUSE (Guided Run)
-1. Task submitted → retrieval finds candidate (Phase 1: vector, Phase 2: filter)
-2. **Phase 3: Point-of-use freshness check** (authoritative)
-3. Precondition verified → parameters bound
-4. Steps executed directly (NO per-step LLM) → 3-5× faster
-5. Confidence updated → promotion gate (≥3 successes + ≥0.6 conf → active)
-
-### Workflow C: UNLEARN (Rule Change Cascade)
-1. Admin changes rule → **O(1) transaction (4 writes)**
-   - Close old rule version
-   - Insert new rule version
-   - ONE outbox event
-   - ONE audit row
-2. Post-commit: SQS publish + InterruptBus + SSE
-3. Running tasks interrupted (flag check before side-effects)
-4. Lambda worker processes:
-   - Status_cache updates (batched ≤100 rows/txn)
-   - Interrupt flags set
-   - Relearn jobs queued for active playbooks
-5. **Point-of-use check prevents stale execution** (even if cache lags)
-
----
-
-## 🧪 Testing & Validation
-
-### Unit Tests
+**Verify the deployment:**
 ```bash
-pytest tests/unit/
+curl https://<cloudfront>/health
+curl https://<cloudfront>/api/admin/verify-index -H "x-admin-token: $ADMIN_TOKEN"  # re-prove the index on Cloud
+curl https://<cloudfront>/api/admin/smoke        -H "x-admin-token: $ADMIN_TOKEN"  # confirm Bedrock is live
+curl -N https://<cloudfront>/api/events                                            # must stream, not buffer
 ```
 
-### Edge Case Coverage
-All 22 critical edge cases from spec §10 validated:
-- ✅ Rule changes mid-execution (interrupt + resume)
-- ✅ LLM parametric staleness (point-of-use quarantine)
-- ✅ Task submitted during cascade (freshness authoritative)
-- ✅ Duplicate playbooks (dedup at compile)
-- ✅ Lucky-episode bad playbook (promotion gate)
-- ✅ Concurrency (40001 retry, FOR UPDATE locks)
-- ✅ Worker crash recovery (idempotent claims, sweeper)
-- ✅ Runaway agent (15 steps / 60s / 25k tokens hard caps)
-
-See `docs/skills-review.md` for complete validation matrix.
-
-### Week Gates Status
-- ✅ **Week 1:** Vector index proven (docs/query-plans.md)
-- ⏳ **Week 2:** Guided ≥3× faster (awaiting integration test)
-- ⏳ **Week 3:** MVP thin-slice (awaiting Track A integration)
-
 ---
 
-## 📚 Key Documents
-
-### Development
-- **Claude.md** - Complete technical spec & persistent memory
-- **DAY0_CONTRACT.md** - Frozen interface contract
-- **TRACK_B_AUDIT.md** - Day 0-13 implementation verification
-
-### Reference
-- **CASCADE_BUILD_SPEC.md** - Complete build specification
-- **Cascade_task_split.md** - Track A/B work division
-- **INTEGRATION_PLAN.md** - Integration workflow with Track A
-
-### Documentation
-- **docs/query-plans.md** - Vector index EXPLAIN verification
-- **docs/skills-review.md** - Edge cases & Agent Skills integration
-
----
-
-## 🔧 Environment Variables
+## 🧪 Testing
 
 ```bash
-# Database
-DATABASE_URL=postgresql://user:pass@host:26257/cascade?sslmode=require
+cd backend
+python verify_integration.py          # 34 assertions, resets the world first
+python verify_integration.py --keep   # run against existing state
+```
 
-# AWS Bedrock
-AWS_REGION=us-east-1
-BEDROCK_AGENT_MODEL_ID=anthropic.claude-sonnet-5
-BEDROCK_FAST_MODEL_ID=anthropic.claude-haiku-4-5
-BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
+It refuses to run in stub mode, so a green result can never be a canned one.
+It talks to the engine directly rather than over HTTP — the interrupt case
+needs a task that already carries `interrupt_flag` before execution starts,
+which isn't reachable through the API without a race.
 
-# Storage
-EPISODES_BUCKET=cascade-episodes-prod
+What it asserts:
 
-# Worker
-CASCADE_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/...
+| Area | Assertions |
+|------|-----------|
+| Schema & seed | 13 tables · 4 head rules · 6 services · 12 incidents |
+| Vector index | `EXPLAIN` selects `pb_embed_idx` |
+| Learn | cold run succeeds · episode written · outbox queued · playbook at 0.30 · **every provenance edge resolves to a real rule version** |
+| Reuse | guided mode entered · speedup reported · confidence +0.15 |
+| Interrupt | halts · **no side effect applied** · scratchpad persisted · flag cleared |
+| Unlearn | cascade <100ms · old version closed · staleness derived · **stale playbook refused** · status demoted |
+| Copilot | answers with SQL · rejects 4 injection attempts · allows a normal `created_at` read |
+| Contract | all 5 MVP + 6 extension signatures unchanged |
 
-# Mode
-CASCADE_STUB_MODE=true  # Use stubs (no AWS calls)
+Frontend typecheck and build:
+```bash
+cd frontend && npm run build
 ```
 
 ---
 
-## 🚧 Integration with Track A
+## 📝 Status (Days 14–16)
 
-### Current Status
-- ✅ Track B (Core Engine): Day 0-13 COMPLETE, CODE FREEZE
-- ⏳ Track A (Shell): In progress by Ashfaq
+### Day 14 — complete
+- [x] Wire the two tracks together (the merge had copied files but never connected them)
+- [x] Local testing with `CASCADE_STUB_MODE=false`
+- [x] All API endpoints verified against a real database
+- [x] Frontend SSE streaming working end to end
+- [x] cold → guided → cascade → **refusal** demo runs
+- [x] Vector index EXPLAIN verified (`docs/query-plans.md`)
+- [x] Deployment scripts 05–07 written and syntax-checked
 
-### Integration Points
-Track A imports ONLY `core/contracts.py`:
-- 5 MVP functions (all implemented)
-- 6 extension functions (all ready)
-- Shared types from `core/models.py`
-- SSE event names (frozen)
+### Day 15 — blocked on AWS credentials
+- [ ] Deploy to AWS (scripts ready)
+- [ ] Re-prove the vector index on the Cloud cluster
+- [ ] Re-measure cold vs guided with Bedrock live
 
-### Integration Workflow
-1. Track A completes API routers + frontend
-2. Manual file copy: Track B → Track A repository
-3. Track A imports `from core.contracts import retrieve, check_freshness, ...`
-4. End-to-end integration testing
-5. Deploy to AWS infrastructure (Track A responsibility)
-
-### Next Steps (After Track A Completion)
-1. ✅ Copy Track B files to Track A repo
-2. ✅ Integration testing (API ↔ Core)
-3. ✅ End-to-end workflow validation
-4. ✅ Metrics measurement (guided ≥3× faster)
-5. ✅ HTTPS deployment
-6. ✅ Video + final polish
+### Day 16
+- [ ] Record demo video
+- [ ] Devpost submission
 
 ---
 
-## 🎯 MVP Completion Status
+## 🤝 Team
 
-### ✅ COMPLETE (Track B)
-- [x] Vector retrieval (two-phase + L2 metric)
-- [x] Freshness checking (point-of-use provenance JOIN)
-- [x] Explore mode (Claude Sonnet tool-calling loop)
-- [x] Guided mode (direct step execution, 3-5× faster)
-- [x] Compiler (trajectory → playbook with deps)
-- [x] Confidence lifecycle (promotion, rejection, decay)
-- [x] Cascade transaction (O(1), 4 writes)
-- [x] Interrupt handling (bus + durable flag)
-- [x] Worker jobs (compile, rule_changed, relearn)
-- [x] Ops Copilot (SQL synthesis)
-- [x] Mock tools (5 tools, DB-backed, idempotent)
-- [x] LLM infrastructure (retry, circuit breaker, budgets)
-- [x] Database schema (frozen, all tables)
-- [x] Edge case validation (22/22 cases)
-- [x] Skills review documentation
+- **Ashfaq** (Track A): FastAPI routers, Frontend UI, Infrastructure
+- **Shawki** (Track B): Core memory engine, AI logic, Worker jobs
 
-### ⏳ PENDING (Track A)
-- [ ] API endpoints (FastAPI routers)
-- [ ] Frontend UI (Next.js)
-- [ ] AWS infrastructure (ECS, Lambda, S3, SQS)
-- [ ] Integration testing
-- [ ] HTTPS deployment
-- [ ] README final polish
-- [ ] Demo video
-
-### Extension Functions (Ready for Week 4+)
-- [x] Autonomy gating infrastructure (decide_autonomy stub)
-- [x] Approval pause/resume infrastructure
-- [x] Postmortem generation pattern
-- [x] Insights detection pattern
-- [x] Dry-run simulation (simulate_rule_change)
+**Repository:** https://github.com/ahammadshawki8/Cascade  
+**License:** MIT
 
 ---
 
-## 📞 Contact & Collaboration
+## 🏆 Contest Goals
 
-**Track B Owner:** Shawki  
-**Track A Owner:** Ashfaq  
-**Repository:** Standalone until Track A integration  
-**Integration:** Manual file copy (Week 4)
+**Target:** 1st Place ($5,000)
 
----
-
-## 📄 License
-
-MIT License - See LICENSE file
+**Judging Criteria:**
+1. ✅ **Agentic Memory Design** - Provenance-based staleness, vector retrieval
+2. ✅ **Technical Implementation** - O(1) cascade, two-phase retrieval
+3. ✅ **Real-World Impact** - On-call SRE automation
+4. ⏳ **Production Readiness** - Full deployment pipeline
+5. ✅ **Creativity & Originality** - Learn/Reuse/Unlearn paradigm
 
 ---
 
-## 🏁 Next Steps
+## 📞 Support
 
-### For Track B (Shawki)
-✅ **DONE** - All Track B work complete through Day 13 CODE FREEZE
-
-**Waiting on:** Track A completion by Ashfaq
-
-### For Track A (Ashfaq)
-1. Complete API routers (`routers/`)
-2. Complete frontend UI (`frontend/`)
-3. Deploy AWS infrastructure (`infra/`)
-4. Signal ready for integration
-
-### For Integration (Both)
-1. Copy Track B files to Track A repository
-2. Run integration tests
-3. Measure metrics (guided ≥3× faster gate)
-4. Deploy to HTTPS
-5. Create demo video
-6. Polish README
-7. **SUBMIT by August 16, 2026, 5:00 PM EDT**
+**Issues:** https://github.com/ahammadshawki8/Cascade/issues  
+**Demo Video:** [To be recorded]  
+**Devpost:** [To be submitted]
 
 ---
 
-**Track B Status:** ✅ COMPLETE | CODE FREEZE | READY FOR INTEGRATION
-
-See `TRACK_B_AUDIT.md` for detailed implementation verification.
+**Status:** ✅ Integration Complete - Ready for Testing  
+**Next Milestone:** Local verification with real database  
+**Submission Deadline:** August 16, 2026

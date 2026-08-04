@@ -1,0 +1,584 @@
+# CASCADE — Integrated Project Memory
+## Track A (Ashfaq) + Track B (Shawki)
+
+**Project:** CockroachDB × AWS Hackathon
+**Submission deadline:** August 16, 2026
+**Last updated:** August 5, 2026
+
+**🟢 STATUS — code complete, locally verified, blocked only on AWS credentials**
+
+| | |
+|---|---|
+| Integration (Steps 1–11) | ✅ complete and verified |
+| Tier 1 (4 features) | ✅ shipped |
+| Tier 2 (5 features) | ✅ shipped |
+| Tier 3 (6 features) | ✅ shipped · 2 deliberately deferred |
+| UI | ✅ rebuilt as a desktop application shell |
+| Docs site | ✅ 16 pages, product-usage focused · 16 rendered Mermaid diagrams · every code block highlighted with a copy button |
+| **`verify_integration.py`** | **81 passed · 0 failed · 0 skipped** |
+| Frontend | builds clean, TypeScript passes |
+| Lint | 6 cosmetic findings, all in contract-frozen files |
+| Deployment | scripts written & syntax-checked, **not yet executed** |
+
+**Single source of truth.** This file supersedes any other progress notes.
+
+---
+
+## 📍 WHERE WE ARE
+
+### Verified working — local, real CockroachDB, `CASCADE_STUB_MODE=false`
+
+| Flow | Evidence |
+|------|----------|
+| **Learn** | INC-1001 → explore → remediated. Episode written, `compile` outbox event, playbook compiled with **3 grounded provenance edges**, confidence 0.30 |
+| **Reuse** | INC-1002 → retrieval hit → freshness pass → **guided**. Confidence 0.30 → 0.45 |
+| **Unlearn** | `rollback_window` v1→v2 cascade committed in **16–26ms** (<100ms target). Playbook → `suspect`, provenance dot red |
+| **Freshness gate** | INC-1009 matched by vector distance but **refused** by the provenance join → fell back to explore → correctly escalated under the new 4h window |
+| **Relearn** | v1 → `invalidated`, v2 created with `supersedes` lineage |
+| **Approval gate** | Unproven runbook parks at `awaiting_approval`, applies nothing, resumes on approve, **remediates exactly once despite the replay** |
+| **Vector index** | `EXPLAIN` → `vector search · playbooks@pb_embed_idx` — Day-3 gate passed |
+| **Copilot** | Answers with visible SQL; rejects 4 injection attempts; no false positive on `created_at` |
+| **Stub mode** | Every endpoint 200s with no database at all |
+
+### ⚠️ The one number not to trust yet
+
+**Cold-vs-guided latency is not meaningful until Bedrock (or Groq) is live.**
+In degraded mode the planner is instant, so the measured delta reflects
+database round-trips only — and guided can even come out *slower*, because it
+still pays for precondition and parameter checks while explore has no LLM
+latency to save. The UI states this rather than hiding it: the delta chip turns
+amber on a regression, and the savings panel says "2.5× slower" instead of
+inventing "0.4× faster".
+
+Re-measure after credentials land. Do not quote a multiplier taken in degraded
+mode.
+
+---
+
+## 🔑 BLOCKED — NEEDED FROM ASHFAQ / AWS CONSOLE
+
+| # | Needed | Why |
+|---|--------|-----|
+| 1 | **AWS credentials** with Bedrock, ECS, Lambda, SQS, S3, Secrets Manager, ECR, CloudFront, Amplify | Nothing deploys; `llm` stays `degraded` |
+| 2 | **Bedrock model access granted** for the three pinned models | Manual per account+region, **has a review delay — request first** |
+| 3 | **CockroachDB Cloud cluster + DSNs** (`cascade_app`, `cascade_worker`, `cascade_readonly`) | Production DB; where the vector-index EXPLAIN must be re-proven |
+| 4 | GitHub repo + PAT *(optional)* | Amplify CI builds; without it `06` does a manual zip deploy |
+
+`ashfaq_track_A_tasks/.env` **does not exist** — only `.env.example` and `env`,
+both the same key-less template. Nothing was lost; it was never committed.
+
+### $100 AWS activity credits
+
+| Activity | Maps to |
+|---|---|
+| **Bedrock playground** | ⭐ **do first** — this is what enables model access |
+| **Lambda web app** | we deploy a Lambda worker (`infra/05`) |
+| **AWS Budgets** | worth setting for real — caps demo spend |
+| EC2 | not needed (Fargate) — launch `t2.micro`, claim, terminate |
+| RDS/Aurora | not needed (CockroachDB) — smallest instance, claim, delete |
+
+$100 comfortably covers Bedrock for the demo (Titan ≈ $0.02/1M tokens).
+
+### Free-tier alternatives — already supported
+
+The LLM layer is provider-pluggable, so development needs no AWS at all:
+
+| Provider | Env var | Serves |
+|----------|---------|--------|
+| Bedrock | AWS creds | everything — **primary**, the AWS story |
+| Groq | `GROQ_API_KEY` | planner + fast calls (tool-calling capable) |
+| OpenRouter | `OPENROUTER_API_KEY` | planner fallback (`:free` models) |
+| HuggingFace | `HF_API_KEY` | embeddings — `BAAI/bge-large-en-v1.5` is **1024-d**, matching `VECTOR(1024)` exactly |
+| *(none)* | — | deterministic local planner + hashed embedder |
+
+Chain: `bedrock → groq → openrouter → local` for chat,
+`bedrock → huggingface → local` for embeddings. Any fallback flips
+`llm_status()` to `degraded`; `/api/admin/smoke` **names the provider actually
+serving**, because "it works" and "Bedrock works" are different claims.
+
+**Verify credentials landed:**
+```bash
+curl localhost:8000/api/admin/smoke -H "x-admin-token: dev-admin-token"
+# want chat_provider / embed_provider = "bedrock", llm_status = "ok"
+```
+
+---
+
+## 📁 STRUCTURE
+
+```
+cascade/
+├── backend/
+│   ├── app/
+│   │   ├── main.py · config.py · db.py · bus.py
+│   │   ├── auth.py                    RBAC (T3.1)
+│   │   ├── telemetry.py               OpenTelemetry (T3.3)
+│   │   ├── core/                      21 modules
+│   │   │   ├── models.py              frozen Day-0 types
+│   │   │   ├── contracts.py           THE track A↔B interface
+│   │   │   ├── llm.py · providers.py  provider chain + fallbacks
+│   │   │   ├── retrieval.py · freshness.py · executor.py
+│   │   │   ├── tools.py · compiler.py · confidence.py · cascade.py
+│   │   │   ├── copilot.py
+│   │   │   ├── autonomy.py            approvals gate   (T1.1)
+│   │   │   ├── insights.py            policy proposals (T1.2)
+│   │   │   ├── postmortem.py          writeups         (T1.3)
+│   │   │   ├── savings.py             cost ledger      (T1.4)
+│   │   │   ├── triage.py              semantic triage  (T2.1)
+│   │   │   ├── analysis.py            replay/time-travel/graph (T2.2–4)
+│   │   │   ├── negative_memory.py     anti-playbooks   (T2.5)
+│   │   │   ├── fanout.py              SNS interrupts   (T3.7)
+│   │   │   └── generalize.py          playbook merging (T3.8)
+│   │   └── routers/                   9 routers
+│   │       ├── tasks · rules · playbooks · metrics · admin
+│   │       ├── copilot · events
+│   │       ├── approvals.py           (T1.1)
+│   │       └── intelligence.py        (T1.2–4, T2.2–5, T3.8)
+│   ├── worker/handler.py · jobs.py    6 job kinds
+│   ├── migrations/                    001 schema · 002 seed
+│   │                                  003 extensions · 004 production
+│   ├── verify_integration.py          81 assertions
+│   ├── run_local.py                   Windows selector-loop launcher
+│   ├── Dockerfile · pyproject.toml
+├── frontend/src/
+│   ├── app/
+│   │   ├── page.tsx                   application shell
+│   │   ├── icon.svg                   brand mark → favicon
+│   │   ├── globals.css                design tokens + invisible scrollbars
+│   │   ├── api/proxy/[...path]/route.ts   server-side privileged proxy
+│   │   └── docs/                      16-page product documentation site
+│   └── components/                    13 components + docs/
+│       ├── ActivityBar · StatusBar · CommandPalette      (shell)
+│       ├── MetricBar · OnboardingRail · CountUp · Logo
+│       ├── IncidentConsole · RunbookLibrary · PolicyPanel
+│       ├── OpsCopilot · RightRail · IntelligencePanel
+│       └── docs/  Doc · DocsNav · CodeBlock · CopyButton · Mermaid
+├── infra/                             7 scripts, 01–07
+├── docs/query-plans.md · skills-review.md · multi-region.md
+├── DEVIATIONS.md                      12 documented deviations
+└── Claude.md                          this file
+```
+
+**Database:** 14 tables. Migration 003 added `anti_playbooks`; 004 added TTL,
+RBAC index and merge lineage.
+
+---
+
+## ⚠️ HISTORY — WHAT THE MERGE ACTUALLY LEFT BEHIND
+
+Kept because it explains why the test suite is as paranoid as it is.
+
+**Steps 1–4 copied files into place but never wired the two tracks together.**
+Step 7's green checks were false: `POST /api/tasks` returned 201 and the row
+flipped to `succeeded` only because `_execute_task` caught `NotImplementedError`
+and marked it done. No task ever executed.
+
+### First audit — 10 defects
+
+| # | Defect |
+|---|--------|
+| 1 | `contracts.py` — the only file Track A imports — had **no wiring at all** |
+| 2 | Two incompatible `models.py`; every Track B module would throw on first call |
+| 3 | `llm.py` 100% stub — no embeddings ⇒ no vector search ⇒ no guided mode |
+| 4 | `pb_embed_idx` **did not exist** — `USING ivfflat` is pgvector syntax, CockroachDB rejected it |
+| 5 | Live DB didn't match `002_seed.sql`; tier + window checks silently no-opped |
+| 6 | `run_txn` misused — the "O(1) atomic cascade" wasn't atomic |
+| 7 | `tools.py` wrote `state='remediated'`, not in the CHECK constraint |
+| 8 | `worker/` imported modules that don't exist in the merged tree |
+| 9 | Copilot rejected any query selecting `created_at` (substring match on "CREATE") |
+| 10 | `admin/reset` replayed seed INSERTs without clearing |
+
+### Second audit — 10 more
+
+| # | Defect |
+|---|--------|
+| 1 | **Stub mode was broken** — routers read `os.getenv`, but pydantic-settings never exports `.env` to `os.environ` |
+| 2 | **Hit rate structurally wrong** — the cold run that *authored* a playbook was counted as a retrieval miss |
+| 3 | `stale_blocks` was a placeholder counting the wrong audit kind |
+| 4 | Re-learn and View-episodes buttons were dead — no handler, no endpoint |
+| 5 | Playbooks `ORDER BY` referenced statuses that cannot occur |
+| 6 | Policy Panel fired a `/dry-run` per keystroke with no ordering guarantee |
+| 7 | Clearing a policy input committed `0` (`Number("") === 0`) |
+| 8 | `{step.duration_ms && …}` rendered a literal `0` |
+| 9 | Onboarding steps were `div`s a stale `localStorage` entry left permanently inert |
+| 10 | Container ran as root, no healthcheck, `migrations/` missing from the image |
+
+### The two that mattered most
+
+**Guided mode ignored the eligibility verdict.** It called
+`check_remediation_eligibility`, recorded the answer, then ran
+`apply_remediation` regardless. Explore was safe because the planner *reads* the
+result; guided replayed spec steps mechanically. A tier-2 incident outside the
+rollback window would have been remediated in direct violation of policy — and
+of the spec's own non-negotiable rule #3. Found while building T1.1, fixed, and
+now regression-tested.
+
+**The admin token was published in the page source.** `NEXT_PUBLIC_*` is inlined
+into the client bundle at build time, and `06_deploy_frontend.sh` was reading the
+token *out of Secrets Manager* to put it there — taking a managed secret and
+making it public, while looking secure. Fixed by a server-side proxy; see
+Security below.
+
+---
+
+## 🔒 SECURITY — WHAT EXISTS, AND WHAT DOESN'T
+
+### Authorization (T3.1) — real
+
+`app/auth.py`: three roles ordered by privilege — **viewer** reads, **operator**
+runs tasks and resolves approvals, **admin** changes policy and resets the world.
+Enforced by FastAPI dependencies on every write endpoint.
+
+- Tokens may carry a `name:` prefix (`ashfaq:secret`) so `audit_log.actor`
+  records *who* acted rather than the literal `"admin"` forever — the exact
+  question the audit trail exists for, and why it survives a demo reset.
+- The approvals endpoint **ignores any client-supplied `resolved_by`**. Who
+  authorised an irreversible action is not a field the caller gets to assert.
+- Approving is **operator**, not admin: on-call should be able to release a
+  gated remediation without holding the keys to policy.
+
+### Credential handling — fixed
+
+Privileged calls go through `frontend/src/app/api/proxy/[...path]/route.ts`,
+a server-side route handler that attaches the token out of the browser's reach.
+It carries an **explicit allowlist** — without one it would be an open relay
+granting admin rights to every backend route, a worse hole than the one it
+replaced.
+
+Verified: after a clean build the token appears only in `.next/server/chunks/`.
+`.next/static/` — what the browser downloads — is clean.
+
+### Authentication — does **not** exist
+
+Be precise about this:
+
+- No login, no user store, no sessions, no OIDC/SSO.
+- Tokens are shared secrets, not per-user credentials. The `name:` prefix is
+  **self-asserted** — anyone holding the admin token can claim to be anyone.
+  That is attribution by convention, not authenticated identity.
+- **25 of 35 endpoints have no auth**, including `POST /tasks` and
+  `POST /copilot`. Public reads are a deliberate demo choice.
+- The proxy stops the credential leaking. It is **not** access control: anyone
+  who can reach the site can still change policy or reset the demo.
+
+For a public judging link that is usually fine and arguably intended — a judge
+is *meant* to change policy. When it isn't, gate the site at the edge:
+
+```bash
+DEMO_PASSWORD=... ./infra/06_deploy_frontend.sh   # Amplify basic auth
+```
+
+Real authentication would be Cognito/OIDC in front of CloudFront with
+`Principal` resolved from a verified JWT. `auth.py` was designed around that
+seam. Post-submission.
+
+---
+
+## ✅ FEATURES SHIPPED
+
+### Tier 1
+
+| ID | Feature | Where |
+|----|---------|-------|
+| T1.1 | Autonomy gating / approvals | `core/autonomy.py`, `routers/approvals.py` |
+| T1.2 | Insight engine | `core/insights.py`, worker `insight_scan` |
+| T1.3 | Auto postmortems | `core/postmortem.py`, worker `postmortem` |
+| T1.4 | Cost & toil savings | `core/savings.py` |
+
+### Tier 2
+
+| ID | Feature | Where |
+|----|---------|-------|
+| T2.1 | Semantic invalidation triage | `core/triage.py`, in `job_rule_changed` |
+| T2.2 | Counterfactual replay | `core/analysis.py`, Policy Panel |
+| T2.3 | Time travel (`AS OF SYSTEM TIME`) | `core/analysis.py` |
+| T2.4 | Blast-radius graph | `core/analysis.py` |
+| T2.5 | Negative memory | `core/negative_memory.py`, `anti_playbooks` |
+
+### Tier 3
+
+| ID | Feature | Where |
+|----|---------|-------|
+| T3.1 | RBAC | `app/auth.py` |
+| T3.2 | Multi-region survival | `docs/multi-region.md` |
+| T3.3 | OpenTelemetry | `app/telemetry.py` |
+| T3.4 | Row-level TTL | `migrations/004_production.sql` |
+| T3.7 | Cross-instance interrupts | `core/fanout.py` |
+| T3.8 | Playbook generalization | `core/generalize.py` |
+
+### Deliberately not built
+
+- **T3.5 multi-tenancy** — needs an org column on every table and scoping in
+  every query. Half-done multi-tenancy is a data-leak vector, not a partial
+  feature. The `Principal` seam is where a tenant id would attach.
+- **T3.6 real integrations** — spec edge case #15 requires the mock world to
+  have zero external dependencies *precisely so* a live call can never hang the
+  demo. Replacing the mocks trades a guarantee for a liability.
+
+---
+
+## 🧠 DESIGN DECISIONS WORTH DEFENDING
+
+**Autonomy gating is orthogonal to policy.** Building T1.1 surfaced that the
+tier-1 gate is largely redundant — `auto_remediate_tier` already refuses tier-1
+services, so `apply_remediation` never reaches the autonomy check. The gate that
+does independent work is the **confidence** one: policy *permits* the action, but
+the runbook hasn't earned the right to take it unsupervised. Off by default
+(`AUTONOMY_MIN_CONFIDENCE=0`) because it stops every first reuse; set `0.6` and a
+runbook earns autonomy over three supervised successes (0.30→0.45→0.60).
+
+**Resume-by-replay, not coroutine suspension.** Approving re-runs the task. Only
+safe because every side-effecting tool is idempotent on `{task_id}:{step_index}`
+— asserted directly: *"remediation applied exactly once despite the replay"*.
+
+**Triage can only clear, never permit.** It re-pins a dep forward when a change is
+provably relaxing, so the freshness join reports fresh through the normal
+mechanism. It cannot mark a stale playbook usable while a version mismatch
+stands. `UNCERTAIN` and any error leave everything quarantined. Numeric
+comparison runs deterministically *before* the model is consulted; unknown
+parameter semantics are never guessed.
+
+**Insights are measured, not extrapolated.** T1.2 is built on T2.2: for each
+candidate widening it re-decides every historical incident and counts what would
+be recovered, then recommends the *smallest* sufficient change, and only when it
+blocks nothing new. The operator can re-run the identical computation before
+committing.
+
+**Generalization is conservative.** Members must share an identical tool
+sequence; provenance is the union of all members pinned at *head*; confidence is
+the **minimum** of the members; members are archived, not deleted.
+
+**D3 is stricter than it reads.** One `WHERE embedding IS NOT NULL` was enough to
+drop the vector index and full-scan. Phase 1 carries *no* predicate at all.
+
+---
+
+## 🎨 UI — DESKTOP APPLICATION SHELL
+
+```
+┌──┬────────────────────────────────────────────┐
+│  │ header: view name + hint                   │
+│A ├────────────────────────────────────────────┤
+│c │ metric strip (+ degraded banner)           │
+│t ├────────────────────────────────────────────┤
+│i │ guided tour (dismissible)                  │
+│v ├────────────────────────────────────────────┤
+│t │            active view                     │
+│y ├────────────────────────────────────────────┤
+│  │ status bar                                 │
+└──┴────────────────────────────────────────────┘
+```
+
+- **Activity bar** — 52px icon rail, six destinations, hover labels, badges,
+  left-edge accent on the active view.
+- **Command palette** — `Ctrl/Cmd-K`, subsequence matching (`gint` → *Go to
+  Intelligence*), grouped Navigate / Run / Copilot / Actions.
+- **Status bar** — LLM provider, SSE connection (read from `readyState`, not
+  latched by a transient `onerror`), database, in-flight counts, reuse rate.
+- **Invisible scrollbars** — transparent track, thumb on hover, zero reserved
+  width.
+- **Approvals promoted** to a primary destination; a gated action
+  auto-navigates there.
+
+Desktop-only by design. One 900px collapse rule kept so a narrow window doesn't
+look broken.
+
+---
+
+## 🚀 DEPLOYMENT
+
+**Order matters.** `07` runs before `06`: `NEXT_PUBLIC_API_URL` is baked in at
+build time, and Amplify serves https — pointing the frontend at the raw http ALB
+gets every request blocked as mixed content, SSE included. `06` refuses to build
+against a non-https URL.
+
+```bash
+cd infra
+./01_ccloud_provision.sh     # CockroachDB Cloud
+./02_migrate.sh              # 001 → 004, vector index
+
+./03_aws_bootstrap.sh        # S3, SQS, Secrets Manager, IAM, ECR
+
+aws secretsmanager update-secret --secret-id cascade/dsn-app      --secret-string "postgresql://..."
+aws secretsmanager update-secret --secret-id cascade/dsn-worker   --secret-string "postgresql://..."
+aws secretsmanager update-secret --secret-id cascade/dsn-readonly --secret-string "postgresql://..."
+
+./04_deploy_ecs.sh           # ECR → ALB → Fargate
+./05_deploy_lambda.sh        # worker + SQS trigger + 60s sweeper
+./07_deploy_cloudfront.sh    # HTTPS in front of the ALB   ← before 06
+./06_deploy_frontend.sh      # Amplify, built against CloudFront
+```
+
+Script notes worth remembering:
+
+- **05** builds for `manylinux2014_x86_64` — without the platform flags pip
+  resolves host wheels for psycopg's binary extension and the function dies at
+  import. `AWS_REGION` is deliberately not set (reserved by Lambda).
+  `RUN_WORKER_IN_PROCESS=false` so the API doesn't double-drain the outbox.
+- **07** sets `Compress: false` and caching disabled — CloudFront buffers a
+  compressed response, and for `/api/events` the stream never ends, so the
+  dashboard would receive nothing at all.
+- **06** passes the admin token **without** a `NEXT_PUBLIC_` prefix. Adding one
+  back re-opens the credential leak.
+
+### Verify the deployment
+
+```bash
+curl https://<cloudfront>/health
+curl https://<cloudfront>/api/admin/verify-index -H "x-admin-token: $ADMIN_TOKEN"
+curl https://<cloudfront>/api/admin/smoke        -H "x-admin-token: $ADMIN_TOKEN"
+curl -N https://<cloudfront>/api/events          # must stream, not buffer
+```
+
+### Remaining after deployment
+
+- [ ] Re-prove the vector index on Cloud → append to `docs/query-plans.md`
+- [ ] Re-measure cold vs guided with a live model → update README + Claude.md
+- [ ] Run Agent Skills against the Cloud cluster → append to `docs/skills-review.md`
+- [ ] Record the 3-minute demo video
+- [ ] Devpost submission
+
+---
+
+## ▶️ QUICK START
+
+```bash
+# 1. CockroachDB
+docker start cascade-crdb     # or: docker run -d --name cascade-crdb \
+                              #   -p 26257:26257 -p 8080:8080 \
+                              #   cockroachdb/cockroach:latest start-single-node --insecure
+
+# 2. Migrations (all four, in order)
+for f in 001_schema 002_seed 003_extensions 004_production; do
+  docker cp backend/migrations/$f*.sql cascade-crdb:/tmp/$f.sql
+done
+docker exec cascade-crdb ./cockroach sql --insecure \
+  -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
+for f in 001 002 003 004; do
+  docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=//tmp/$f.sql
+done
+
+# 3. Backend — run_local.py, NOT bare uvicorn
+cd backend && pip install -e . && python run_local.py
+
+# 4. Frontend
+cd frontend && npm install && npm run dev
+
+# 5. Prove it
+cd backend && python verify_integration.py     # expect 81 passed, 0 failed
+```
+
+> **Why `run_local.py`?** psycopg's async mode cannot drive Windows' default
+> ProactorEventLoop, and as of Python 3.14 `set_event_loop_policy` no longer
+> influences the loop uvicorn builds for itself. The launcher constructs a
+> selector loop explicitly. Linux/ECS is unaffected — the Dockerfile runs
+> uvicorn directly.
+
+### Demo sequence
+
+1. `Remediate INC-1001` → explore, steps stream, runbook appears (candidate, 0.30)
+2. `Remediate INC-1002` → **guided**, console names the runbook + version
+3. Policy Panel → `incident.rollback_window` → `hours: 4` → impact + replay preview → Commit
+4. Runbook flips to **suspect**, provenance dot red
+5. `Remediate INC-1009` → matched by vector search but **refused as stale** →
+   explores → escalates under the new 4h rule
+6. Intelligence → savings, blast-radius graph, negative memory, time travel
+7. Approvals → the insight recommending a policy change, one click to the panel
+8. `Ctrl-K` → Reset demo world
+
+---
+
+## 🔌 ENDPOINT REFERENCE
+
+| Endpoint | Role | Purpose |
+|----------|------|---------|
+| `POST /api/tasks` | — | submit an incident |
+| `GET /api/events` | — | SSE stream |
+| `GET /api/metrics` | — | cold/guided/hit-rate/`llm` status |
+| `GET /api/playbooks` `…/{id}` | — | runbook library |
+| `GET /api/playbooks/{id}/episodes` | — | runs of a runbook |
+| `GET /api/playbooks/{id}/freshness` | — | authoritative provenance check |
+| `POST /api/playbooks/{id}/relearn` | operator | queue explore → compile v2 |
+| `GET /api/rules` `…/{key}` | — | policy |
+| `POST /api/rules/{key}/dry-run` | — | impact preview, writes nothing |
+| `POST /api/rules/{key}/replay` | — | counterfactual over history (T2.2) |
+| `POST /api/rules/{key}` | admin | cascade transaction |
+| `GET /api/approvals` | — | pending queue |
+| `POST /api/approvals/{id}/resolve` | operator | approve / reject |
+| `GET /api/insights` · `POST …/{id}/dismiss` | — | policy proposals |
+| `POST /api/insights/scan` | admin | run detectors now |
+| `GET /api/savings` | — | cost + toil ledger |
+| `GET /api/graph` | — | blast-radius graph |
+| `GET /api/timetravel` | — | state N minutes ago |
+| `GET /api/anti-playbooks` | — | negative memory |
+| `GET /api/postmortems` `…/{episode_id}` | — | writeups |
+| `GET /api/generalize/candidates` | — | mergeable clusters |
+| `POST /api/generalize` | admin | merge them |
+| `POST /api/copilot` | — | NL → read-only SQL |
+| `POST /api/admin/reset` | admin | clean v1 world (preserves `audit_log`) |
+| `GET /api/admin/verify-index` | admin | live EXPLAIN proof |
+| `GET /api/admin/smoke` | admin | which provider is serving |
+| `POST /internal/sse` · `/internal/fanout` | secret | worker → API bridge |
+
+---
+
+## ✅ QUALITY GATES
+
+```bash
+cd backend  && python verify_integration.py            # 81 passed, 0 failed
+cd backend  && python -m ruff check app worker         # 6 cosmetic, frozen files
+cd frontend && npm run build                           # compiles + typechecks
+CASCADE_STUB_MODE=true …                               # every endpoint, no DB
+```
+
+`verify_integration.py` **refuses to run in stub mode**, so a green result can
+never be a canned one. It talks to the engine directly rather than over HTTP —
+the interrupt case needs a task already carrying `interrupt_flag` before
+execution starts, which isn't reachable through the API without a race.
+
+Coverage: schema · seed · vector index · learn + provenance grounding · reuse ·
+confidence math · **policy enforcement in guided mode** · autonomy gate
+(park / no side effect / resume / idempotent replay / reject) · negative memory ·
+savings · cascade timing · derived staleness · **stale refusal** · triage
+semantics · counterfactual replay · time travel · graph integrity · insights
+idempotency · postmortems · copilot + 4 injection refusals · RBAC ordering ·
+TTL scoping · generalization lineage · all 11 contract signatures.
+
+---
+
+## 🚨 OPEN RISKS
+
+| # | Risk | Status |
+|---|------|--------|
+| 1 | **Bedrock unavailable** | 🔴 Engine degraded. Clients implemented, auto-activate on credentials. Headline latency and Titan-quality retrieval both unverified |
+| 2 | **Latency figure** | ⚠️ Do not quote a multiplier measured in degraded mode |
+| 3 | **Vector index on Cloud** | ⚠️ Verified locally; must be re-proven on the Cloud cluster |
+| 4 | **No authentication** | ⚠️ By design for the demo. Gate with `DEMO_PASSWORD` if the link goes wide |
+| 5 | **Deployment never executed** | ⚠️ Scripts syntax-checked only; first run will surface AWS-side surprises |
+| 6 | 22 edge cases from spec §10 | ⚠️ Substantially covered by the 81 assertions, not individually audited |
+
+Resolved: import paths · DB connection · stub mode · local vector index ·
+missing deploy scripts · credential leak in the client bundle.
+
+---
+
+## 📚 REFERENCES
+
+- `README.md` — judge-facing overview
+- **`/docs` on the running app** — the product documentation site. 16 pages
+  under four sections (Getting started · Using Cascade · Understanding it ·
+  Reference). Written for someone *using* the product: what to type, what to
+  press, what each badge means. Not a code tour. 16 Mermaid diagrams,
+  build-time syntax highlighting, copy button on every code block, and no em
+  dashes anywhere.
+- `DEVIATIONS.md` — 12 deviations with rationale and impact
+- `docs/query-plans.md` — EXPLAIN proof, **including the full-scan plan one
+  stray predicate produced**
+- `docs/skills-review.md` — 12 schema/query findings, every one a live defect
+- `docs/multi-region.md` — T3.2 configuration and what it changes
+- `ground_truth/` — CASCADE_BUILD_SPEC v3.1, DAY0_CONTRACT, task split
+
+---
+
+**Next action:** collect AWS credentials + Bedrock model access, then execute
+`infra/01` → `07` in order.
