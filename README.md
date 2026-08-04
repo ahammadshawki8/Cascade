@@ -1,488 +1,575 @@
-# CASCADE - Agentic Incident Response with Persistent Memory
+# CASCADE
 
-**Project:** CockroachDB × AWS Hackathon Submission  
-**Team:** Ashfaq (Track A - Shell) + Shawki (Track B - Core Engine)  
-**Status:** Integrated and verified end-to-end against a live CockroachDB — 34/34 integration assertions passing  
-**Last Updated:** August 4, 2026
+**An on-call SRE agent that learns how it fixed something, reuses that
+knowledge, and stops trusting it the moment your policy changes.**
 
----
+CockroachDB x AWS Hackathon submission
+Ashfaq (Track A, shell) and Shawki (Track B, core engine)
+Last updated: August 5, 2026
 
-## 🎯 What is CASCADE?
-
-CASCADE is an **agentic on-call SRE assistant** that learns, reuses, and unlearns incident response playbooks using CockroachDB as its persistent memory layer.
-
-### The Core Concept: Learn → Reuse → Unlearn
-
-1. **LEARN** (Cold Run)
-   - Novel incident → Claude explores with tools
-   - Successful trajectory → Compiled playbook
-   - Stored with vector embedding in CockroachDB
-
-2. **REUSE** (Guided Run)
-   - Retrieve similar playbook via vector search
-   - Execute directly (no LLM per-step)
-   - **3-5× faster** than cold run
-
-3. **UNLEARN** (Cascade)
-   - Policy rule changes → **O(1) transaction**
-   - Staleness derived via provenance join
-   - Running tasks interrupted gracefully
-   - Stale playbooks relearned automatically
+| | |
+|---|---|
+| Integration suite | **81 passed, 0 failed**, against a live CockroachDB |
+| Providers | Verified end to end on **Groq** (planner) and **HuggingFace** (embeddings) |
+| Measured speedup | **3.31x** (cold 6,561 ms, guided 1,981 ms) |
+| Cascade transaction | **16 to 26 ms**, independent of how much has been learned |
+| Deployment | Scripts written and syntax checked, not yet executed |
 
 ---
 
-## 🏗️ Architecture
+## The problem
 
-```
-┌─────────────────┐
-│   Next.js UI    │ ← SSE streaming, real-time updates
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  FastAPI (ECS)  │ ← 7 routers + InterruptBus
-└────────┬────────┘
-         │
-┌────────▼────────────────────────────────┐
-│         Core Engine (Track B)           │
-│  ┌──────────┬──────────┬──────────┐    │
-│  │ Executor │ Compiler │ Cascade  │    │
-│  │ Retrieval│ Freshness│ Confidence│    │
-│  └──────────┴──────────┴──────────┘    │
-└────────┬────────────────────────────────┘
-         │
-┌────────▼────────────────────────────────┐
-│      CockroachDB (Distributed)          │
-│  • Playbooks with vector embeddings     │
-│  • Provenance graph (playbook_deps)     │
-│  • Temporal rules (valid_from/valid_to) │
-│  • Transactional outbox                 │
-└─────────────────────────────────────────┘
-         │
-┌────────▼────────┐
-│ Lambda Worker   │ ← SQS + EventBridge sweeper
-│ (Compile, Learn)│
-└─────────────────┘
-```
+Any tool can cache what worked. The trouble starts afterwards.
+
+Your rollback window changes from 24 hours to 4. Every runbook that assumed the
+old window is now a set of confidently wrong instructions, and nothing about it
+looks wrong. It still matches the incident. It still executes cleanly. It just
+does the wrong thing, quickly and automatically.
+
+Cascade treats a remembered procedure as usable only while the rules it was
+built on are still the current rules, and it checks that immediately before
+every reuse rather than hoping somebody remembered to invalidate a cache.
+
+## The loop
+
+**Learn.** A novel incident arrives. The agent plans with tools, checks policy
+before acting, and either remediates or escalates with a reason. A successful
+run is compiled into a runbook, together with the exact policy rules it
+consulted and the version each one was at.
+
+**Reuse.** A similar incident arrives. Vector search finds the runbook, the
+provenance check confirms every pinned rule is still current, and the stored
+steps execute directly with no planner in the loop.
+
+**Unlearn.** You change a rule. Every runbook that depended on it is stale the
+instant the transaction commits, in-flight tasks are interrupted before their
+next side effect, and high-confidence runbooks are queued for relearning.
+
+## The part that matters
+
+Run `INC-1009` after shortening the rollback window and watch what happens.
+
+The runbook still matches by vector distance. It is refused anyway, because the
+provenance join says it was compiled against `rollback_window` v1 while head is
+now v2. The task falls back to exploring, and then escalates, because that
+deploy is five hours old and the new window is four.
+
+Two refusals, for two different reasons. It refused to *reuse* because the
+memory was stale, then refused to *act* because the new policy says no. A
+system that only did the second would have run a stale procedure and hoped the
+policy check caught it.
+
+Stale knowledge is worse than no knowledge, because an agent will act on it
+confidently. That refusal is the product.
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## Quick start
 
-### Prerequisites
-- Docker Desktop (for CockroachDB)
-- Python 3.12+
-- Node.js 20+
-- npm or yarn
+Ten minutes. One container, two terminals. No cloud account and no API keys
+required: Cascade ships with a deterministic local planner and a local
+embedder, so the whole loop runs offline.
+
+**Prerequisites:** Docker, Python 3.12 or newer, Node.js 20 or newer.
 
 ### 1. Start CockroachDB
+
 ```bash
-docker run -d \
-  --name cascade-crdb \
-  -p 26257:26257 \
-  -p 8080:8080 \
-  cockroachdb/cockroach:latest \
-  start-single-node --insecure
+docker run -d --name cascade-crdb \
+  -p 26257:26257 -p 8080:8080 \
+  cockroachdb/cockroach:latest start-single-node --insecure
 ```
 
-### 2. Run Database Migrations
+### 2. Apply the four migrations, in order
+
+`001` creates the schema and the vector index, `002` seeds policy and twelve
+demo incidents, `003` adds negative memory, `004` adds retention and merge
+lineage.
+
 ```bash
-docker cp backend/migrations/001_schema.sql cascade-crdb:/tmp/
-docker cp backend/migrations/002_seed.sql   cascade-crdb:/tmp/
+cd backend
+
+for f in 001_schema 002_seed 003_extensions 004_production; do
+  docker cp migrations/$f*.sql cascade-crdb:/tmp/$f.sql
+done
+
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
-docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=/tmp/001_schema.sql
-docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=/tmp/002_seed.sql
+
+for f in 001 002 003 004; do
+  docker exec cascade-crdb ./cockroach sql --insecure \
+    --database=cascade --file=//tmp/$f.sql
+done
 ```
 
-Expect 13 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
-vector index. (`infra/02_migrate.sh` does the same against a remote cluster.)
+Expect 14 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
+vector index. `infra/02_migrate.sh` does the same against a remote cluster.
 
-### 3. Configure Environment
+### 3. Configure
+
 ```bash
 cp .env.example backend/.env
-# Edit backend/.env:
-#   DATABASE_URL=postgresql://root@localhost:26257/cascade?sslmode=disable
-#   CASCADE_STUB_MODE=false      # flipping this to false IS the integration test
-#   RUN_WORKER_IN_PROCESS=true   # local dev has no SQS/Lambda to drain the outbox
 ```
 
-### 4. Start Backend
+The three settings that matter locally:
+
+```bash
+DATABASE_URL=postgresql://root@localhost:26257/cascade?sslmode=disable
+CASCADE_STUB_MODE=false      # flipping this to false IS the integration test
+RUN_WORKER_IN_PROCESS=true   # local dev has no SQS or Lambda to drain the outbox
+```
+
+### 4. Start the backend
+
 ```bash
 cd backend
 pip install -e .
 python run_local.py
 ```
 
-Backend runs at: http://127.0.0.1:8000
+Runs at `http://127.0.0.1:8000`.
 
-> **Why `run_local.py` and not bare `uvicorn`?** psycopg's async mode cannot
-> drive the ProactorEventLoop that asyncio selects by default on Windows, and
-> as of Python 3.14 `set_event_loop_policy` no longer influences the loop
-> uvicorn builds for itself. The launcher constructs a selector loop explicitly.
-> On Linux/macOS `uvicorn app.main:app` works directly, and that is what the
+> **Why `run_local.py` rather than bare `uvicorn`?** psycopg's async mode cannot
+> drive the ProactorEventLoop that asyncio selects by default on Windows, and as
+> of Python 3.14 `set_event_loop_policy` no longer influences the loop uvicorn
+> builds for itself. The launcher constructs a selector loop explicitly. On
+> Linux and macOS `uvicorn app.main:app` works directly, and that is what the
 > Dockerfile runs.
 
-### 5. Start Frontend
+### 5. Start the frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Frontend runs at: http://localhost:3000
+Runs at `http://localhost:3000`. In-app documentation is at `/docs`.
 
----
+### Optional: connect a real model
 
-## 📁 Project Structure
+Any one of these in `backend/.env` is enough, and the first that answers wins:
 
-```
-cascade/
-├── backend/                 # FastAPI + Core Engine
-│   ├── app/
-│   │   ├── main.py         # Entry point
-│   │   ├── core/           # Track B engine (11 modules)
-│   │   └── routers/        # Track A API (7 routers)
-│   ├── worker/             # Lambda handlers
-│   └── migrations/         # Database schema
-├── frontend/               # Next.js UI
-│   └── src/
-│       ├── app/           # Main layout + SSE
-│       └── components/    # 8 UI components
-├── infra/                 # Deployment scripts
-├── docs/                  # Documentation
-└── ground_truth/          # Reference specs
-```
-
----
-
-## 🔧 Key Technologies
-
-### CockroachDB Tools (3 used)
-1. **Distributed Vector Indexing** - ANN playbook retrieval
-2. **MCP Server** - Dev workflow via Claude Code
-3. **ccloud CLI** - Cluster provisioning
-
-### AWS Services
-- **Bedrock** - Claude Sonnet (agent), Haiku (fast), Titan (embeddings)
-- **Lambda** - Background workers
-- **ECS Fargate** - API deployment
-- **S3** - Episode storage
-- **SQS** - Event queue
-- **EventBridge** - Sweeper schedule
-
-### Stack
-- **Backend:** Python 3.12, FastAPI, psycopg3
-- **Frontend:** Next.js 15, TypeScript, React 19
-- **Database:** CockroachDB v26+ (vector index required)
-- **AI:** Anthropic Claude on AWS Bedrock
-
----
-
-## 📊 Demo Flow
-
-### Step 1: Cold Run (Learn)
 ```bash
-# Submit novel incident
-curl -X POST http://localhost:8000/api/tasks \
+GROQ_API_KEY=gsk_...          # planner, tool-calling capable
+HF_API_KEY=hf_...             # embeddings, BAAI/bge-large-en-v1.5 is 1024-d
+OPENROUTER_API_KEY=sk-or-...  # planner fallback
+AWS_REGION=us-east-1          # or Bedrock, using machine credentials
+```
+
+Chat falls back `bedrock, groq, openrouter, local`. Embeddings fall back
+`bedrock, huggingface, local`. The two chains are independent, so chat can be
+live while embeddings are not. Press `Ctrl-K` and run **Check which LLM
+provider is serving** to see which is which, or call `/api/admin/smoke`.
+
+---
+
+## Demo flow
+
+### 1. Learn
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{"input": "Remediate INC-1001"}'
-
-# Watch explore mode in UI console
-# ~12s execution → playbook compiled
 ```
 
-### Step 2: Warm Run (Reuse)
+The console badge reads **Exploring**. Steps stream in as they complete. A
+runbook appears in the library a second or two later at confidence 0.30, with
+its provenance edges listed and every dot green.
+
+### 2. Reuse
+
 ```bash
-# Submit similar incident
-curl -X POST http://localhost:8000/api/tasks \
+curl -X POST http://127.0.0.1:8000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{"input": "Remediate INC-1002"}'
-
-# Watch guided mode in UI console
-# ~3s execution → 4× faster!
 ```
 
-### Step 3: Policy Change (Unlearn)
+The badge now names the runbook and its version instead of reading
+**Exploring**. Different service, same class of problem, no planner in the loop.
+
+### 3. Unlearn
+
+Preview the blast radius first. This is deterministic SQL and writes nothing.
+
 ```bash
-# Preview the blast radius first — deterministic SQL, no LLM
 curl -X POST http://127.0.0.1:8000/api/rules/incident.rollback_window/dry-run \
   -H "Content-Type: application/json" \
   -d '{"body": "Rollback allowed only within {hours} hours of deploy.", "params": {"hours": 4}}'
+```
 
-# Commit it (POST, and it needs the admin token)
+Then commit it. This one needs the admin token.
+
+```bash
 curl -X POST http://127.0.0.1:8000/api/rules/incident.rollback_window \
   -H "Content-Type: application/json" \
   -H "x-admin-token: dev-admin-token" \
   -d '{"body": "Rollback allowed only within {hours} hours of deploy.", "params": {"hours": 4}}'
-
-# Watch the cascade in the UI:
-# • cascade transaction commits in ~16-26ms (4 writes, no fan-out)
-# • runbook card flips to `suspect`, provenance dot goes red
-# • running tasks interrupted before their next side-effect
-# • relearn queued for playbooks at confidence ≥0.6 → v2 with supersedes
 ```
 
-### Step 4: The point of the whole thing — the freshness gate
+The cascade commits in 16 to 26 ms as four writes with no fan-out. The runbook
+card flips to `suspect` with a red provenance dot, running tasks are
+interrupted before their next side effect, and runbooks above 0.6 confidence
+are queued for relearning as v2 with a `supersedes` link.
+
+### 4. The refusal
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{"input": "Remediate INC-1009"}'
 ```
 
-The playbook still *matches* by vector distance. It is **refused anyway**,
-because the provenance join says it was compiled against `rollback_window` v1
-and head is now v2. The task falls back to explore and correctly escalates —
-INC-1009's deploy is 5 hours old, outside the new 4-hour window.
-
-Stale knowledge is worse than no knowledge, because the agent would act on it
-confidently. That refusal is the product.
+Matched by vector search, refused as stale, explores instead, escalates under
+the new rule. See "The part that matters" above for why this is the whole point.
 
 ---
 
-## 🧠 Beyond the MVP
+## Architecture
+
+```
+Browser
+  |  https
+Next.js interface and server-side proxy
+  |
+FastAPI on ECS Fargate            9 routers, in-process interrupt bus, SSE
+  |
+  +--> CockroachDB                all durable state, vector index, MVCC history
+  |
+  +--> SQS --> Lambda worker      compile, rule_changed, relearn,
+                 ^                 recheck_suspect, postmortem, insight_scan
+                 |
+          EventBridge, every 60s  the sweeper that makes the outbox correct
+                                  rather than hopeful
+```
+
+Four processes and one database. There is deliberately no second source of
+truth: staleness, history and provenance are all derived from CockroachDB
+rather than mirrored into anything else.
+
+---
+
+## Key design decisions
+
+### Changing a rule is O(1)
+
+The obvious approach is to mark every dependent runbook stale, which means an
+unbounded write set and heavy contention on exactly the table retrieval reads.
+Instead the transaction is a fixed four writes: close the old rule version,
+insert the new one, one outbox event, one audit entry.
+
+Staleness then *derives* from the version bump. Every dependent runbook is
+stale the instant this commits, and no runbook row was touched to make that
+true. That is why the cascade takes the same 16 to 26 ms whether there are
+three runbooks or three thousand.
+
+### Retrieval runs in two statements
+
+Phase 1 is a pure nearest-neighbour query with **no predicate at all**. Phase 2
+is a primary key lookup with the metadata filter. Phase 3, the freshness check,
+lives in the executor because matching and permission are different questions.
+
+This is not premature optimisation. An earlier version carried
+`WHERE embedding IS NOT NULL` in phase 1, and that single predicate was enough
+to make the optimizer abandon `pb_embed_idx` and full scan with a top-k sort.
+The answers stayed correct, which is exactly why it went unnoticed.
+`docs/query-plans.md` has both plans side by side.
+
+### Provenance is grounded, not asserted
+
+A model asked to summarise a run will happily cite a plausible-sounding rule it
+never saw. Every citation is cross-checked against what was actually observed:
+the policy snapshot the run read, and the versions the eligibility check
+reported using. A citation corroborated by neither is dropped.
+
+An invented edge would point at a rule the runbook does not really depend on,
+so it would never go stale when the rule that matters changes. The runbook would
+look fresh forever, which is precisely the failure this system exists to
+prevent.
+
+### Interrupts, three layers
+
+An in-process bus delivers in microseconds and an SNS broadcast reaches peer
+instances in about a second, but neither is authoritative. The durable
+`tasks.interrupt_flag`, checked immediately before every side-effecting call, is
+the guarantee. Correctness never depends on the fast path.
+
+### Confidence is earned
+
+New runbook starts at `candidate` and 0.30. Success adds 0.15 up to 0.99,
+failure multiplies by 0.6, three successes and at least 0.60 promotes to
+`active`, below 0.20 is terminal, and idle runbooks decay 0.98 per seven days.
+
+Confidence and freshness answer different questions. Confidence asks whether
+this has worked before. Freshness asks whether the rules it assumed are still
+the rules. A runbook at 0.99 is quarantined the instant a dependency moves.
+
+---
+
+## Beyond the MVP
 
 | Feature | What it does |
-|---------|--------------|
-| **Autonomy gating** | Irreversible actions on production-critical services stop and wait for a human. Risk is a static property of the tool — the model cannot argue past it. Approving *re-runs* the task; that's safe because every side-effecting tool is idempotent on `{task_id}:{step_index}`. |
-| **Insight engine** | Mines history and proposes policy changes: *"the 4h rollback window is blocking 3 incidents; widening to 31h recovers all 3 and blocks nothing new."* Computed by replay, not extrapolation. |
-| **Semantic triage** | Not every rule change breaks everything. Widening a window can't break a runbook that ran inside the old one. Provably-relaxing changes clear automatically; **uncertain always stays quarantined**. |
-| **Counterfactual replay** | Before committing a policy change, re-decide every historical incident: which would newly be automated, which newly blocked. |
-| **Time travel** | `AS OF SYSTEM TIME` — *"what did the agent believe when it made that call?"*, answered by CockroachDB's MVCC with no event-sourcing layer of our own. |
-| **Negative memory** | Failed approaches become `anti_playbooks` and are injected into the planner prompt as warnings. Advisory only — policy still decides. |
-| **Blast-radius graph** | `rules → runbooks → tasks`, with stale dependencies drawn red. |
-| **Auto postmortems** | Any run that doesn't cleanly remediate gets a writeup grounded in the recorded trajectory. |
-| **Savings ledger** | Tokens, dollars and engineer-hours avoided, measured from episodes. |
+|---|---|
+| Autonomy gating | Irreversible actions from runbooks below a confidence threshold stop and wait for a human. Approving *re-runs* the task, which is safe because every side-effecting tool is idempotent on `{task_id}:{step_index}`. Off by default, since a threshold above zero stops every first reuse. |
+| Insight engine | Mines history and proposes policy changes, for example that widening a 4 hour window to 31 hours recovers three blocked incidents and blocks nothing new. Computed by replay over recorded episodes, not extrapolated. |
+| Semantic triage | Not every rule change breaks everything. Widening a window cannot invalidate a runbook that ran inside the old one, so provably relaxing changes clear automatically. Uncertain always stays quarantined, and numeric comparison runs deterministically before any model is consulted. |
+| Counterfactual replay | Before committing a policy change, re-decide every historical incident and report which would newly be automated and which newly blocked. |
+| Time travel | `AS OF SYSTEM TIME` answers "what did the agent believe when it made that call", using CockroachDB's MVCC directly with no event-sourcing layer of our own. |
+| Negative memory | Failed approaches become anti-playbooks and are surfaced to the planner as warnings. Advisory only, because a stale memory of failure must not veto something policy now permits. |
+| Blast-radius graph | Rules to runbooks to tasks, with stale dependencies drawn red and dashed. |
+| Auto postmortems | Any run that does not cleanly remediate gets a writeup grounded in the recorded trajectory. |
+| Savings ledger | Tokens, dollars and engineer hours avoided, measured from episodes rather than projected. |
+| Generalization | Merges near-duplicate runbooks. Members must share an identical tool sequence, merged confidence is the **minimum** of its members, and members are archived rather than deleted. |
 
 ---
 
-## 🎓 Key Innovations
+## Performance
 
-### 1. O(1) Cascade Transaction (D1)
-Traditional approach: Mass-update all dependent playbooks (N writes, contention)  
-**CASCADE approach:** 4 writes total, zero fan-out
-- Close old rule version
-- Insert new rule version
-- ONE outbox event
-- ONE audit entry
+Measured August 5, 2026 against local CockroachDB v26.2.5 with **Groq serving
+the planner and HuggingFace serving embeddings**.
 
-Staleness detected at retrieval time via provenance join.
+| Metric | Target | Measured |
+|---|---|---|
+| Cascade transaction | under 100 ms | **16 to 26 ms** |
+| Cold run (explore) | not applicable | 6,561 ms over 4 steps |
+| Guided run (reuse) | not applicable | 1,981 ms over 4 steps |
+| Guided versus cold | at least 3x faster | **3.31x** |
+| Tokens avoided per reuse | not applicable | 1,169 |
+| Vector retrieval | under 20 ms | index verified by live `EXPLAIN` |
 
-### 2. Two-Phase Retrieval (D2)
-Never mix vector ORDER BY with scalar filters (planner risk).  
-**Phase 1:** Pure ANN (20 candidates)  
-**Phase 2:** PK lookup + metadata filter  
-**Phase 3:** Freshness check
+Quote the 3.31x with the provider attached. It was measured on Groq, not
+Bedrock, and it will move with model latency.
 
-### 3. Interrupt Choreography (D4)
-- **In-memory bus:** Microsecond latency for same-instance tasks
-- **Durable flag:** Checked before side-effects
-- **Scratchpad persist:** Resume with fresh rules
-
-### 4. Confidence Lifecycle (D6)
-- New playbook: `candidate` @ 0.30
-- Success: +0.15 (max 0.99)
-- Failure: ×0.6
-- Promote: ≥3 successes + ≥0.60 → `active`
-- Reject: <0.20 → terminal
-- Idle decay: ×0.98 per 7 days
+Earlier revisions of this file reported the guided path as *slower*. That was
+real, and it was an artefact of running with no model provider: the explore
+path paid no planning latency to save, while the guided path still ran its
+precondition and parameter checks. `/api/metrics` reports the serving provider
+and reason, so you can always tell which regime a measurement came from.
 
 ---
 
-## 📈 Performance
+## Security and safety
 
-Measured locally (CockroachDB v26.2.5, single-node Docker) via
-`backend/verify_integration.py`:
+**Authorization exists.** Three roles ordered by privilege: viewer reads,
+operator runs tasks and resolves approvals, admin changes policy and resets the
+world. Enforced on every write endpoint. The approvals endpoint ignores any
+client-supplied `resolved_by`, because who authorised an irreversible action is
+not a field the caller gets to assert.
 
-| Metric | Target | Measured | |
-|--------|--------|----------|---|
-| Cascade transaction | <100ms | **16–26ms** | ✅ |
-| Cold run (explore) | — | ~280ms | |
-| Guided run | — | ~33–80ms | |
-| Guided vs cold | ≥3× faster | **3.5–8.5×** | ⚠️ see below |
-| Vector retrieval | <20ms | index-verified | ✅ |
-| P95 task latency | <15s | well under | ✅ |
+**Authentication does not.** No login, no user store, no sessions. Tokens are
+shared secrets, not per-user credentials, and the `name:` prefix that shows up
+in the audit log is self-asserted. Most read endpoints need no credential at
+all. For a judging link that is arguably intended, since a judge is meant to be
+able to change policy. When it is not, gate the whole site at the edge with
+`DEMO_USER` and `DEMO_PASSWORD` on `infra/06_deploy_frontend.sh`.
 
-> ⚠️ **The speedup figure is not yet the real one.** These numbers were taken
-> with Bedrock unavailable, so the explore path used the deterministic local
-> planner and the delta reflects database round-trips only. With a live planner
-> the cold path gains seconds of LLM latency and the gap widens — but the
-> honest number is whatever gets measured then, not this one. `/api/metrics`
-> reports `llm: "ok" | "degraded"` so you can always tell which regime a
-> measurement came from.
+**Credentials stay server-side.** Privileged calls go through a Next.js route
+handler that attaches the token out of the browser's reach, behind an explicit
+path allowlist. An earlier version put the admin token in a `NEXT_PUBLIC_`
+variable, which is inlined into the client bundle at build time, and the deploy
+script was reading it out of Secrets Manager in order to publish it in the page
+source. After a clean build the token now appears only in the server bundle.
 
----
+**The Ops Copilot is read-only,** four layers deep: it must parse as a single
+`SELECT` or `WITH`, mutating keywords are rejected on word boundaries, the query
+is wrapped in `LIMIT 200` with a 3 second timeout, and it executes as
+`cascade_readonly`, which holds no write grants. The last layer is the one that
+matters; the first three exist so a bad query fails loudly and cheaply.
 
-## 🔒 Security & Safety
+**Budgets are ceilings, not truncation.** 15 steps, 25,000 tokens, 60 seconds
+per task. Exceeding one fails the task, because a half-executed remediation is
+worse than none.
 
-### SQL Injection Prevention
-- All queries use parameterized statements
-- No string interpolation
-
-### Idempotency
-- All side-effecting tools use idempotency keys
-- Outbox claim with `UPDATE ... WHERE claimed_at IS NULL`
-
-### Ops Copilot Safety
-- Read-only SQL (SELECT/WITH only)
-- Single statement validation
-- 3s timeout + LIMIT 200 wrapper
-- Executed as `cascade_readonly` role
-
-### Budget Limits
-- 15 steps per task
-- 60s wall clock
-- 25k tokens
+**Everything else** uses parameterized statements with no string interpolation,
+and outbox rows are claimed with `UPDATE ... WHERE claimed_at IS NULL` so
+at-least-once delivery and a worker dying mid-job are both survivable.
 
 ---
 
-## 📚 Documentation
+## Testing
 
-### For Users
-- `Claude.md` — integrated project memory, progress, and the roadmap beyond MVP
-- `ground_truth/CASCADE_BUILD_SPEC.md` — complete specification
+```bash
+cd backend
+python verify_integration.py          # 81 assertions, resets the world first
+python verify_integration.py --keep   # run against existing state
+```
 
-### For Judges
-- `docs/query-plans.md` — vector index EXPLAIN verification, including the
-  full-scan plan that a single stray predicate produced before it was fixed
-- `docs/skills-review.md` — CockroachDB Agent Skills findings
-- `DEVIATIONS.md` — 10 documented deviations with rationale and impact
-- `backend/verify_integration.py` — the 34 assertions behind every claim above
+It refuses to run in stub mode, so a green result can never be a canned one. It
+talks to the engine directly rather than over HTTP, because the interrupt case
+needs a task already carrying `interrupt_flag` before execution starts, which is
+not reachable through the API without a race.
 
-### For Developers
-- `ground_truth/DAY0_CONTRACT.md` - Frozen interface
-- `ground_truth/ashfaq.md` - Track A implementation notes
-- `ground_truth/Cascade_task_split.md` - Work division
+| Area | What is asserted |
+|---|---|
+| Schema and seed | 14 tables, 4 head rules, 6 services, 12 incidents |
+| Vector index | `EXPLAIN` selects `pb_embed_idx` |
+| Learn | Cold run succeeds, episode written, outbox queued, runbook at 0.30, and **every provenance edge resolves to a real rule version** |
+| Reuse | Guided mode entered, speedup reported, confidence rises by 0.15 |
+| Policy in guided mode | A refused eligibility verdict blocks the side-effecting steps |
+| Autonomy gate | Parks, applies nothing, resumes on approve, **remediates exactly once despite the replay**, rejects cleanly |
+| Interrupt | Halts, **no side effect applied**, scratchpad persisted, flag cleared |
+| Unlearn | Cascade under 100 ms, old version closed, staleness derived, **stale runbook refused**, status demoted |
+| Triage, replay, time travel, graph | Semantics and integrity |
+| Copilot | Answers with visible SQL, rejects 4 injection attempts, allows a normal `created_at` read |
+| RBAC, TTL, generalization | Role ordering, retention scoping, merge lineage |
+| Contract | All 11 signatures unchanged |
+
+Frontend:
+
+```bash
+cd frontend && npm run build       # compiles and typechecks
+```
 
 ---
 
-## 🚢 Deployment
+## Deployment
 
-### Production Deployment (AWS)
-
-**Prerequisites:** AWS credentials, and **Bedrock model access granted manually**
-in the console for the three pinned models — that approval is not instant, so
-request it first or every call returns `AccessDeniedException`.
+**Request Bedrock model access first.** It is granted manually per account and
+region and the approval is not instant. Until it lands every call returns
+`AccessDeniedException`.
 
 ```bash
 cd infra
 
 ./01_ccloud_provision.sh     # CockroachDB Cloud cluster
-./02_migrate.sh              # schema + seed + vector index
+./02_migrate.sh              # schema, seed, vector index
 
 ./03_aws_bootstrap.sh        # S3, SQS, Secrets Manager, IAM, ECR
 
-# Store the real DSNs before anything tries to connect
+# Store the real connection strings before anything tries to connect
 aws secretsmanager update-secret --secret-id cascade/dsn-app      --secret-string "postgresql://..."
 aws secretsmanager update-secret --secret-id cascade/dsn-worker   --secret-string "postgresql://..."
 aws secretsmanager update-secret --secret-id cascade/dsn-readonly --secret-string "postgresql://..."
 
-./04_deploy_ecs.sh           # image → ECR, ALB, Fargate service
-./05_deploy_lambda.sh        # worker + SQS trigger + 60s EventBridge sweeper
-./07_deploy_cloudfront.sh    # HTTPS in front of the ALB  ← must precede 06
+./04_deploy_ecs.sh           # image to ECR, load balancer, Fargate service
+./05_deploy_lambda.sh        # worker, SQS trigger, 60s EventBridge sweeper
+./07_deploy_cloudfront.sh    # HTTPS in front of the load balancer, before 06
 ./06_deploy_frontend.sh      # Amplify, built against the CloudFront URL
 ```
 
-**Order matters.** `07` runs before `06`: `NEXT_PUBLIC_API_URL` is baked in at
-build time, and Amplify serves over https — pointing the frontend at the raw
-http ALB gets every request blocked as mixed content, taking the SSE stream
-with it. `06` refuses to build against a non-https URL for exactly this reason.
+**Order matters.** `07` runs before `06` because `NEXT_PUBLIC_API_URL` is baked
+in at build time. Amplify serves over https, so pointing the frontend at the raw
+http load balancer gets every request blocked as mixed content, taking the event
+stream with it. `06` refuses to build against a non-https URL for exactly this
+reason.
 
-**Verify the deployment:**
+Two other traps worth knowing. `05` pins
+`--platform manylinux2014_x86_64 --only-binary=:all:`, without which pip
+resolves host wheels for the database driver's binary extension and the function
+dies at import. `07` disables compression and caching, because CloudFront
+buffers a compressed response and `/api/events` never ends, so the dashboard
+would receive nothing at all.
+
+**Verify:**
+
 ```bash
 curl https://<cloudfront>/health
-curl https://<cloudfront>/api/admin/verify-index -H "x-admin-token: $ADMIN_TOKEN"  # re-prove the index on Cloud
-curl https://<cloudfront>/api/admin/smoke        -H "x-admin-token: $ADMIN_TOKEN"  # confirm Bedrock is live
-curl -N https://<cloudfront>/api/events                                            # must stream, not buffer
+curl https://<cloudfront>/api/admin/verify-index -H "x-admin-token: $ADMIN_TOKEN"
+curl https://<cloudfront>/api/admin/smoke        -H "x-admin-token: $ADMIN_TOKEN"
+curl -N https://<cloudfront>/api/events          # must stream, not buffer
 ```
 
 ---
 
-## 🧪 Testing
+## Project structure
 
-```bash
-cd backend
-python verify_integration.py          # 34 assertions, resets the world first
-python verify_integration.py --keep   # run against existing state
+```
+backend/
+  app/
+    main.py, config.py, db.py, bus.py
+    auth.py                RBAC
+    telemetry.py           OpenTelemetry, optional
+    core/                  21 modules
+      contracts.py         the Track A to Track B seam, 5 frozen signatures
+      llm.py, providers.py provider chain and fallbacks
+      retrieval.py, freshness.py, executor.py, compiler.py
+      cascade.py, confidence.py, tools.py, copilot.py
+      autonomy.py, insights.py, postmortem.py, savings.py
+      triage.py, analysis.py, negative_memory.py
+      fanout.py, generalize.py
+    routers/               9 routers
+  worker/                  6 job kinds
+  migrations/              001 schema, 002 seed, 003 extensions, 004 production
+  verify_integration.py    81 assertions
+  run_local.py             Windows selector-loop launcher
+
+frontend/src/
+  app/
+    page.tsx               desktop application shell
+    icon.svg               brand mark and favicon
+    api/proxy/[...path]/   server-side privileged proxy
+    docs/                  16-page product documentation site
+  components/              13 components plus the docs toolkit
+
+infra/                     7 scripts, 01 to 07
+docs/                      query-plans.md, skills-review.md, multi-region.md
+ground_truth/              specification and contract
 ```
 
-It refuses to run in stub mode, so a green result can never be a canned one.
-It talks to the engine directly rather than over HTTP — the interrupt case
-needs a task that already carries `interrupt_flag` before execution starts,
-which isn't reachable through the API without a race.
+---
 
-What it asserts:
+## Technology
 
-| Area | Assertions |
-|------|-----------|
-| Schema & seed | 13 tables · 4 head rules · 6 services · 12 incidents |
-| Vector index | `EXPLAIN` selects `pb_embed_idx` |
-| Learn | cold run succeeds · episode written · outbox queued · playbook at 0.30 · **every provenance edge resolves to a real rule version** |
-| Reuse | guided mode entered · speedup reported · confidence +0.15 |
-| Interrupt | halts · **no side effect applied** · scratchpad persisted · flag cleared |
-| Unlearn | cascade <100ms · old version closed · staleness derived · **stale playbook refused** · status demoted |
-| Copilot | answers with SQL · rejects 4 injection attempts · allows a normal `created_at` read |
-| Contract | all 5 MVP + 6 extension signatures unchanged |
+**CockroachDB** provides distributed vector indexing for runbook retrieval,
+`AS OF SYSTEM TIME` for time travel, row-level TTL for retention, and
+serializable transactions for the cascade. Cluster provisioning uses the ccloud
+CLI, and the MCP server was used during development.
 
-Frontend typecheck and build:
-```bash
-cd frontend && npm run build
-```
+**AWS** provides Bedrock (Claude Sonnet for planning, Haiku for fast calls,
+Titan for embeddings), Lambda for background work, ECS Fargate for the API, S3
+for episode trajectories, SQS for events, and EventBridge for the sweeper.
+
+**Stack:** Python 3.12 with FastAPI and psycopg3; Next.js 16 with React 19 and
+TypeScript; CockroachDB v26 or newer, which the vector index requires.
 
 ---
 
-## 📝 Status (Days 14–16)
+## Documentation
 
-### Day 14 — complete
-- [x] Wire the two tracks together (the merge had copied files but never connected them)
-- [x] Local testing with `CASCADE_STUB_MODE=false`
-- [x] All API endpoints verified against a real database
-- [x] Frontend SSE streaming working end to end
-- [x] cold → guided → cascade → **refusal** demo runs
-- [x] Vector index EXPLAIN verified (`docs/query-plans.md`)
-- [x] Deployment scripts 05–07 written and syntax-checked
+**In the app.** Run it and open `/docs`. Sixteen pages covering what to type,
+what each badge means, and how to get value from the product, organised as
+Getting started, Using Cascade, Understanding it, and Reference.
 
-### Day 15 — blocked on AWS credentials
-- [ ] Deploy to AWS (scripts ready)
-- [ ] Re-prove the vector index on the Cloud cluster
-- [ ] Re-measure cold vs guided with Bedrock live
+**In the repository:**
 
-### Day 16
-- [ ] Record demo video
-- [ ] Devpost submission
+- `CLAUDE.md`, integrated project memory, current status, and the roadmap
+- `DEVIATIONS.md`, 12 documented deviations with rationale and impact
+- `docs/query-plans.md`, vector index `EXPLAIN` verification, including the
+  full-scan plan a single stray predicate produced before it was fixed
+- `docs/skills-review.md`, CockroachDB Agent Skills findings
+- `docs/multi-region.md`, survival goals and per-table localities
+- `ground_truth/`, the build specification, the frozen Day 0 contract, and the
+  track split
 
 ---
 
-## 🤝 Team
+## Status
 
-- **Ashfaq** (Track A): FastAPI routers, Frontend UI, Infrastructure
-- **Shawki** (Track B): Core memory engine, AI logic, Worker jobs
+**Done.** Both tracks wired together and verified against a real database. The
+full learn, reuse, unlearn, refuse sequence runs end to end. Vector index proven
+by live `EXPLAIN`. Tier 1 through 3 features shipped. Interface rebuilt as a
+desktop application shell with a command palette. Documentation site written.
+81 of 81 assertions passing on live providers.
 
-**Repository:** https://github.com/ahammadshawki8/Cascade  
-**License:** MIT
+**Blocked on AWS credentials.** Deploying, re-proving the vector index on a
+Cloud cluster, and re-measuring latency with Bedrock live.
 
----
+**Remaining.** Demo video, Devpost submission.
 
-## 🏆 Contest Goals
-
-**Target:** 1st Place ($5,000)
-
-**Judging Criteria:**
-1. ✅ **Agentic Memory Design** - Provenance-based staleness, vector retrieval
-2. ✅ **Technical Implementation** - O(1) cascade, two-phase retrieval
-3. ✅ **Real-World Impact** - On-call SRE automation
-4. ⏳ **Production Readiness** - Full deployment pipeline
-5. ✅ **Creativity & Originality** - Learn/Reuse/Unlearn paradigm
+Two features were deliberately not built. Multi-tenancy needs an org column on
+every table and scoping in every query, and half-done multi-tenancy is a
+data-leak vector rather than a partial feature. Real external integrations were
+skipped because the mock world is required to have zero external dependencies
+precisely so a live call can never hang the demo.
 
 ---
 
-## 📞 Support
+## Team
 
-**Issues:** https://github.com/ahammadshawki8/Cascade/issues  
-**Demo Video:** [To be recorded]  
-**Devpost:** [To be submitted]
+Ashfaq, Track A: FastAPI routers, frontend, infrastructure.
+Shawki, Track B: core memory engine, AI logic, worker jobs.
 
----
-
-**Status:** ✅ Integration Complete - Ready for Testing  
-**Next Milestone:** Local verification with real database  
-**Submission Deadline:** August 16, 2026
+Repository: https://github.com/ahammadshawki8/Cascade
+Issues: https://github.com/ahammadshawki8/Cascade/issues
+License: MIT
