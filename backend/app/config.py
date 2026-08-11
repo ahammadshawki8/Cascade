@@ -23,10 +23,15 @@ class Settings(BaseSettings):
     # data so the shell can be built before the engine exists.
     cascade_stub_mode: bool = False
 
-    # --- Bedrock (pinned model IDs, spec §2) ------------------------------
-    bedrock_agent_model_id: str = "anthropic.claude-sonnet-5"      # agent + compiler
-    bedrock_fast_model_id: str = "anthropic.claude-haiku-4-5"      # precondition, extraction, recheck
-    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"   # 1024-d, normalize=true
+    # --- Bedrock (model IDs, spec §2 + DEVIATIONS #13) --------------------
+    # On-demand Bedrock invocation requires an INFERENCE PROFILE id, which
+    # carries a us. or global. region prefix. A bare "anthropic.<model>" id
+    # is provisioned-throughput only and fails with AccessDeniedException
+    # reading "not available for this account", which is easy to misread as a
+    # model-access problem. Verified live against account 897545289507.
+    bedrock_agent_model_id: str = "us.anthropic.claude-sonnet-4-6"              # agent + compiler
+    bedrock_fast_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"  # precondition, extraction, recheck
+    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"                # 1024-d, normalize=true
 
     # --- Alternate LLM providers (spec deviation #11) ---------------------
     # Bedrock stays the primary path. These exist so the full learn/reuse/

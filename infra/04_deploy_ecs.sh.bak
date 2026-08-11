@@ -4,8 +4,6 @@
 
 set -euo pipefail
 
-mkdir -p .awstmp
-
 REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 PROJECT_NAME="cascade"
@@ -66,11 +64,8 @@ echo "Registering task definition..."
 # Get secret ARNs
 DSN_APP_ARN=$(aws secretsmanager describe-secret --secret-id "${PROJECT_NAME}/dsn-app" --query ARN --output text)
 INTERNAL_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${PROJECT_NAME}/internal-sse" --query ARN --output text)
-# Without this the container falls back to config.py's default admin token,
-# leaving every mutating endpoint on a value published in the repo.
-ADMIN_TOKEN_ARN=$(aws secretsmanager describe-secret --secret-id "${PROJECT_NAME}/admin-token" --query ARN --output text)
 
-cat > .awstmp/task-def.json <<EOF
+cat > /tmp/task-def.json <<EOF
 {
   "family": "$TASK_FAMILY",
   "networkMode": "awsvpc",
@@ -93,8 +88,8 @@ cat > .awstmp/task-def.json <<EOF
       "environment": [
         {"name": "AWS_REGION", "value": "$REGION"},
         {"name": "CASCADE_STUB_MODE", "value": "false"},
-        {"name": "BEDROCK_AGENT_MODEL_ID", "value": "us.anthropic.claude-sonnet-4-6"},
-        {"name": "BEDROCK_FAST_MODEL_ID", "value": "us.anthropic.claude-haiku-4-5-20251001-v1:0"},
+        {"name": "BEDROCK_AGENT_MODEL_ID", "value": "anthropic.claude-sonnet-5"},
+        {"name": "BEDROCK_FAST_MODEL_ID", "value": "anthropic.claude-haiku-4-5"},
         {"name": "BEDROCK_EMBED_MODEL_ID", "value": "amazon.titan-embed-text-v2:0"},
         {"name": "EPISODES_BUCKET", "value": "${PROJECT_NAME}-episodes-${ACCOUNT_ID}"},
         {"name": "CASCADE_QUEUE_URL", "value": "https://sqs.${REGION}.amazonaws.com/${ACCOUNT_ID}/${PROJECT_NAME}-events"},
@@ -102,8 +97,7 @@ cat > .awstmp/task-def.json <<EOF
       ],
       "secrets": [
         {"name": "DATABASE_URL", "valueFrom": "$DSN_APP_ARN"},
-        {"name": "INTERNAL_SSE_SECRET", "valueFrom": "$INTERNAL_SECRET_ARN"},
-        {"name": "ADMIN_TOKEN", "valueFrom": "$ADMIN_TOKEN_ARN"}
+        {"name": "INTERNAL_SSE_SECRET", "valueFrom": "$INTERNAL_SECRET_ARN"}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
@@ -126,7 +120,7 @@ cat > .awstmp/task-def.json <<EOF
 EOF
 
 TASK_DEF_ARN=$(aws ecs register-task-definition \
-    --cli-input-json file://.awstmp/task-def.json \
+    --cli-input-json file:///tmp/task-def.json \
     --query 'taskDefinition.taskDefinitionArn' \
     --output text)
 

@@ -4,8 +4,6 @@
 
 set -euo pipefail
 
-mkdir -p .awstmp
-
 # Configuration
 REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -130,7 +128,7 @@ echo ""
 echo "Creating IAM roles..."
 
 # ECS Task Execution Role (pulls images, reads secrets)
-cat > .awstmp/ecs-trust-policy.json <<EOF
+cat > /tmp/ecs-trust-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -143,7 +141,7 @@ EOF
 
 aws iam create-role \
     --role-name "${PROJECT_NAME}-ecs-execution-role" \
-    --assume-role-policy-document file://.awstmp/ecs-trust-policy.json \
+    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
     2>/dev/null || echo "Role already exists"
 
 aws iam attach-role-policy \
@@ -153,11 +151,11 @@ aws iam attach-role-policy \
 # ECS Task Role (application permissions)
 aws iam create-role \
     --role-name "${PROJECT_NAME}-ecs-task-role" \
-    --assume-role-policy-document file://.awstmp/ecs-trust-policy.json \
+    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
     2>/dev/null || echo "Role already exists"
 
 # Attach inline policy for task role
-cat > .awstmp/ecs-task-policy.json <<EOF
+cat > /tmp/ecs-task-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -199,10 +197,10 @@ EOF
 aws iam put-role-policy \
     --role-name "${PROJECT_NAME}-ecs-task-role" \
     --policy-name "${PROJECT_NAME}-ecs-permissions" \
-    --policy-document file://.awstmp/ecs-task-policy.json
+    --policy-document file:///tmp/ecs-task-policy.json
 
 # Lambda Execution Role
-cat > .awstmp/lambda-trust-policy.json <<EOF
+cat > /tmp/lambda-trust-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -215,7 +213,7 @@ EOF
 
 aws iam create-role \
     --role-name "${PROJECT_NAME}-lambda-role" \
-    --assume-role-policy-document file://.awstmp/lambda-trust-policy.json \
+    --assume-role-policy-document file:///tmp/lambda-trust-policy.json \
     2>/dev/null || echo "Role already exists"
 
 aws iam attach-role-policy \
@@ -223,7 +221,7 @@ aws iam attach-role-policy \
     --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 
 # Lambda inline policy
-cat > .awstmp/lambda-policy.json <<EOF
+cat > /tmp/lambda-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -267,7 +265,7 @@ EOF
 aws iam put-role-policy \
     --role-name "${PROJECT_NAME}-lambda-role" \
     --policy-name "${PROJECT_NAME}-lambda-permissions" \
-    --policy-document file://.awstmp/lambda-policy.json
+    --policy-document file:///tmp/lambda-policy.json
 
 echo "✓ IAM roles created"
 echo ""

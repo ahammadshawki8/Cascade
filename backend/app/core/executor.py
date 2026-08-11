@@ -373,8 +373,16 @@ async def _guided_mode(
     if incident_id:
         incident = await TOOL_MAP["get_incident"](incident_id=incident_id, db=db)
 
+    # Head rules travel with the check: rule-derived preconditions ("deploy
+    # occurred within rollback window") are unevaluable from incident data
+    # alone, and an unevaluable precondition was being read as a violation.
+    rules = await TOOL_MAP["get_rules"](domain="incident", db=db)
+
     precondition = await fast.check_precondition(
-        spec.model_dump(), task_text, incident if isinstance(incident, dict) else {}
+        spec.model_dump(),
+        task_text,
+        incident if isinstance(incident, dict) else {},
+        rules,
     )
     if not precondition.get("ok", True):
         failed = precondition.get("failed", [])

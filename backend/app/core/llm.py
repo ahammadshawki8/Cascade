@@ -444,23 +444,49 @@ class FastClient:
         return reply["text"] if reply and reply["text"] else None
 
     async def check_precondition(
-        self, spec: dict[str, Any], task_text: str, incident: dict[str, Any]
+        self,
+        spec: dict[str, Any],
+        task_text: str,
+        incident: dict[str, Any],
+        rules: Any = None,
     ) -> dict[str, Any]:
-        """-> {"ok": bool, "failed": [str]}"""
+        """-> {"ok": bool, "failed": [str]}
+
+        This is a ROUTING decision (reuse vs explore), not a safety gate. Policy
+        is enforced downstream and independently: the freshness join refuses
+        stale playbooks, and the tools re-verify head rules on every call, so
+        `apply_remediation` refuses an ineligible incident no matter what this
+        check returns (spec 5.3). Failing closed here therefore buys no safety
+        and costs the reuse the whole design exists to produce.
+
+        `rules` is the current head rule set. Without it, a precondition like
+        "deploy occurred within rollback window" is unevaluable, because the
+        window lives in the rules rather than on the incident, and the model
+        answers false for lack of data.
+        """
         preconditions = spec.get("preconditions", [])
         if not preconditions:
             return {"ok": True, "failed": []}
+
+        rules_block = ""
+        if rules:
+            rules_block = f"\nCurrent policy rules:\n{json.dumps(rules, indent=2, default=str)}\n"
 
         raw = await self.generate(
             system=(
                 "You check whether an incident satisfies a runbook's preconditions. "
                 'Reply with JSON only: {"ok": true|false, "failed": ["..."]}. '
-                "List a precondition in `failed` only when the incident data "
-                "clearly violates it."
+                "List a precondition in `failed` ONLY when the data you were given "
+                "clearly and specifically violates it. If a precondition cannot be "
+                "evaluated from the data provided, treat it as satisfied and do NOT "
+                "list it: the execution tools re-check every policy rule themselves "
+                "and will refuse an ineligible action, so a missed check here is "
+                "caught downstream, whereas a false failure blocks a valid runbook."
             ),
             user=(
                 f"Preconditions:\n{json.dumps(preconditions, indent=2)}\n\n"
-                f"Task: {task_text}\n\n"
+                f"Task: {task_text}\n"
+                f"{rules_block}\n"
                 f"Incident:\n{json.dumps(incident, indent=2, default=str)}"
             ),
             max_tokens=300,

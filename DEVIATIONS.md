@@ -221,6 +221,50 @@ reset list was written would otherwise have leaked state across demo resets.
 
 ---
 
+## 13. Bedrock model IDs are inference profiles, and the pinned models were unavailable
+
+**Specified.** §2 pins `anthropic.claude-sonnet-5` (agent + compiler) and
+`anthropic.claude-haiku-4-5` (fast path), and instructs that an ID unavailable
+in the account or region be substituted with the closest available Claude
+Sonnet/Haiku ID and recorded here.
+
+**Implemented.**
+
+```
+BEDROCK_AGENT_MODEL_ID=us.anthropic.claude-sonnet-4-6
+BEDROCK_FAST_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
+```
+
+**Why.** Two separate findings, verified live against account 897545289507 in
+us-east-1 on August 11, 2026.
+
+1. **On-demand invocation requires an inference profile id**, not a bare model
+   id. Profile ids carry a `us.` or `global.` region prefix. Calling the bare
+   `anthropic.claude-sonnet-5` returns `AccessDeniedException` reading "not
+   available for this account", and the bare dated Haiku id returns
+   `ValidationException` naming the inference-profile requirement outright.
+   The first of those is badly misleading: it reads as a model-access problem
+   when it is actually a throughput-mode problem. Bare ids are
+   provisioned-throughput only.
+2. **The newest generation is not granted on this account.** A live sweep of
+   `bedrock-runtime converse` found `us.anthropic.claude-sonnet-4-6`,
+   `us.anthropic.claude-sonnet-4-5-20250929-v1:0`,
+   `us.anthropic.claude-haiku-4-5-20251001-v1:0` and
+   `amazon.titan-embed-text-v2:0` granted, while `us.anthropic.claude-sonnet-5`,
+   `us.anthropic.claude-opus-5`, `us.anthropic.claude-opus-4-8` and
+   `us.anthropic.claude-opus-4-7` were all refused. Sonnet 4.6 is the closest
+   available model to the pinned Sonnet 5 and supports the tool calling the
+   planner and compiler depend on.
+
+**Impact.** None on architecture. Titan returns 1024 dimensions, matching
+`VECTOR(1024)` exactly, so retrieval is unaffected. Latency figures must be
+re-measured on Sonnet 4.6 rather than carried over from Groq. If Sonnet 5
+access is granted later, swapping `BEDROCK_AGENT_MODEL_ID` back is a one-line
+change with no code impact.
+
+---
+
 ## Not deviations — bugs found and fixed during integration
 
 Recorded because they were mis-reported as complete: `contracts.py` was never

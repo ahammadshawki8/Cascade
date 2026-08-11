@@ -203,3 +203,57 @@ modes.
 ---
 
 *Last updated: August 4, 2026*
+
+---
+
+## Re-proven on CockroachDB Cloud (August 11, 2026)
+
+Every plan above was captured against a local single-node cluster in Docker.
+This section repeats the Day-3 gate against the real distributed cluster the
+submission runs on, which is what the "distributed vector indexing" claim
+actually rests on.
+
+**Cluster:** `cascade-demo-31658`, CockroachDB Cloud Basic, CCL v26.2.5,
+AWS us-east-1. Schema loaded from migrations 001 through 004 with zero errors:
+14 tables, 4 rules, 6 services, 12 incidents.
+
+**Phase 1 query** (no predicate at all, per DEVIATIONS #2):
+
+```sql
+SELECT playbook_id, embedding <-> $1 AS dist
+FROM playbooks
+ORDER BY embedding <-> $1
+LIMIT 20;
+```
+
+**Plan:**
+
+```
+distribution: local
+
+* top-k
+| estimated row count: 1
+| order: +dist
+| k: 20
+|
++-- * render
+    |
+    +-- * lookup join
+        | table: playbooks@playbooks_pkey
+        | equality: (playbook_id) = (playbook_id)
+        | equality cols are key
+        |
+        +-- * vector search
+              table: playbooks@pb_embed_idx
+              target count: 20
+```
+
+`vector search` on `playbooks@pb_embed_idx` with the `<->` (L2) operator, the
+same shape as the local plan. The application's own
+`GET /api/admin/verify-index` endpoint independently reports `uses_index: true`
+against this cluster.
+
+**SQL roles** were created on this cluster per spec section 4: `cascade_app`,
+`cascade_worker`, and `cascade_readonly`. `audit_log` carries SELECT and INSERT
+only for every role, so append-only is enforced by grant rather than by
+convention, and `cascade_readonly` carries `statement_timeout = '3s'`.
