@@ -122,6 +122,8 @@ async def compile_playbook(
         deps=deps,
         supersedes=supersedes,
         db=db,
+        task_id=task_id,
+        episode_id=episode_id,
     )
 
 
@@ -150,13 +152,24 @@ Rules:
 - apply_remediation must be preceded by check_remediation_eligibility.
 - Never include idempotency_key; the executor injects it.
 - Cite only rule_keys that appear in the trajectory's get_rules output.
-- Preconditions state when this runbook applies IN GENERAL. They must not
-  encode incidental properties of the one incident it was learned from: no
-  specific severity (P1, P2, ...), no specific service name, no specific
-  incident id, no specific timestamp or date. A precondition only the training
-  incident can satisfy makes the runbook permanently unreusable.
-  Prefer the conditions policy actually gates on: incident kind, incident
-  state, service tier, and how long ago the deploy happened."""
+- Preconditions state when this runbook applies IN GENERAL. There are two ways
+  to get this wrong, and both make the runbook permanently unreusable:
+  (a) Encoding incidental properties of the one incident it was learned from:
+      a specific severity (P1, P2, ...), service name, incident id, timestamp
+      or date. Only the training incident would ever satisfy them.
+  (b) Freezing a policy value into the text: "service tier is 1", "deploy was
+      within the last 4 hours". Policy thresholds are checked at run time
+      against the live rules by check_remediation_eligibility, so restating a
+      number here is redundant, and it becomes wrong the moment policy moves.
+  State the shape of the situation instead.
+  Good: "incident kind is 'bad_deploy'"
+        "incident state is 'open'"
+        "the service tier is within what the auto_remediate_tier policy allows"
+        "the deploy is recent enough for the rollback window to permit rollback"
+  Bad:  "severity is P1"
+        "service is svc-checkout"
+        "service tier is 1"
+        "deploy occurred within the last 4 hours\""""
 
 
 async def _extract_spec(
@@ -345,6 +358,8 @@ async def _insert_playbook(
     deps: list[tuple[str, int, str, float]],
     supersedes: UUID | None,
     db,
+    task_id: UUID,
+    episode_id: UUID,
 ) -> UUID:
     """Insert playbook + deps + audit atomically.
 
@@ -406,6 +421,11 @@ async def _insert_playbook(
                         "version": version,
                         "supersedes": str(supersedes) if supersedes else None,
                         "deps": [d[0] for d in deps],
+                        # Which run taught this. /api/tasks/{id}/explain uses it
+                        # to close the loop: an explore run is only worth its
+                        # cost if it left something reusable behind.
+                        "task_id": str(task_id),
+                        "episode_id": str(episode_id),
                     }
                 ),
             ),

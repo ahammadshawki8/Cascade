@@ -6,6 +6,7 @@ Endpoints:
     POST /api/admin/reset          — restore the clean v1 demo world
     GET  /api/admin/verify-index   — EXPLAIN proof that pb_embed_idx is used
     GET  /api/admin/smoke          — Bedrock reachability per model
+    POST /api/mock/incidents       — author a new incident to run the agent on
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.auth import ADMIN, VIEWER, Principal, require
 from app.config import settings
@@ -159,3 +161,154 @@ def _strip_txn(sql: str) -> str:
         if line.strip().upper().rstrip(";") not in ("BEGIN", "COMMIT")
     ]
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Author your own incident
+# ---------------------------------------------------------------------------
+# The seeded world (INC-1001..1012) covers the decision space, but a reviewer
+# who can only replay canned ids has no way to tell a learning agent from a
+# scripted one. This lets anyone author a fresh incident and watch the same
+# machinery decide on input it has never seen.
+#
+# Deliberately unauthenticated, matching POST /api/tasks: submitting work is
+# public in this demo, and this is the input side of exactly that.
+
+_KINDS = ("bad_deploy", "error_spike", "resource_exhaustion")
+_SEVERITIES = ("P1", "P2", "P3")
+
+
+class NewIncident(BaseModel):
+    kind: str = Field(
+        default="bad_deploy",
+        description=f"one of {_KINDS}",
+    )
+    severity: str = Field(default="P2", description=f"one of {_SEVERITIES}")
+    service_name: str = Field(default="svc-custom", max_length=64)
+    service_tier: int = Field(default=2, ge=1, le=3, description="1 = most critical")
+    deploy_age_hours: float = Field(
+        default=2.0,
+        ge=0,
+        description=(
+            "How long ago the service last deployed. This is the field the "
+            "rollback-window policy is evaluated against, so it decides "
+            "whether automatic rollback is permitted."
+        ),
+    )
+    error_rate: float = Field(default=0.05, ge=0, le=1)
+    cpu_usage: float = Field(default=0.4, ge=0, le=1)
+
+
+@router.post("/mock/incidents", status_code=201)
+async def create_incident(body: NewIncident):
+    """Author an incident, then run the agent on it.
+
+    Returns the generated id. Submit it exactly like a seeded one:
+    POST /api/tasks {"input": "Remediate <incident_id>"}
+    """
+    from app.db import one, q
+
+    if body.kind not in _KINDS:
+        raise HTTPException(422, f"kind must be one of {_KINDS}")
+    if body.severity not in _SEVERITIES:
+        raise HTTPException(422, f"severity must be one of {_SEVERITIES}")
+
+    # Keep custom ids in their own range so they never collide with the seed
+    # and survive a demo reset being distinguishable from it.
+    row = await one(
+        "SELECT count(*) AS n FROM mock_incidents WHERE incident_id LIKE 'INC-9%'"
+    )
+    incident_id = f"INC-9{(int(row['n']) if row else 0) + 1:03d}"
+
+    # The service must exist first: mock_incidents.service_name carries a
+    # foreign key into mock_services, so inserting the incident first aborts.
+    await q(
+        """
+        INSERT INTO mock_services (service_name, tier, description)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (service_name) DO NOTHING
+        """,
+        (body.service_name, body.service_tier, "authored via /api/mock/incidents"),
+    )
+
+    await q(
+        """
+        INSERT INTO mock_incidents
+            (incident_id, kind, severity, service_name, service_tier,
+             deploy_timestamp, state, error_rate, cpu_usage)
+        VALUES (%s, %s, %s, %s, %s, now() - (%s || ' hours')::INTERVAL,
+                'open', %s, %s)
+        """,
+        (
+            incident_id,
+            body.kind,
+            body.severity,
+            body.service_name,
+            body.service_tier,
+            str(body.deploy_age_hours),
+            body.error_rate,
+            body.cpu_usage,
+        ),
+    )
+
+    log.info(
+        "authored incident %s: %s %s on %s (tier %d, deploy %.1fh ago)",
+        incident_id, body.severity, body.kind, body.service_name,
+        body.service_tier, body.deploy_age_hours,
+    )
+    return {
+        "incident_id": incident_id,
+        "submit_with": {"input": f"Remediate {incident_id}"},
+        "expect": await _explain_expectation(body),
+    }
+
+
+async def _explain_expectation(body: NewIncident) -> str:
+    """State up front what policy should decide, so the run is falsifiable.
+
+    A reviewer who is told the expected outcome before pressing go can tell the
+    difference between an agent reasoning about policy and a demo replaying a
+    script. That only works if the prediction is right, so two rules apply.
+
+    It is read from the live rules, never hardcoded: the demo exists to have
+    its policy changed, and a prediction quoting the seeded 24h window would
+    start lying the moment a reviewer moved it.
+
+    And it predicts which *action* policy forbids, not the final outcome.
+    Refusing a rollback does not oblige the agent to escalate: restarting is a
+    permitted alternative, and the agent does reach for it. An earlier version
+    of this promised escalation, which made a correct run look like a failure.
+    """
+    from app.db import q
+
+    rows = await q(
+        "SELECT rule_key, params FROM rules r WHERE version = "
+        "(SELECT max(version) FROM rules WHERE rule_key = r.rule_key)"
+    )
+    params = {r["rule_key"]: (r["params"] or {}) for r in rows}
+    min_tier = params.get("incident.auto_remediate_tier", {}).get("min_tier", 2)
+    window_h = params.get("incident.rollback_window", {}).get("hours", 24)
+
+    if body.service_tier < int(min_tier):
+        return (
+            f"tier {body.service_tier} is above what auto_remediate_tier permits "
+            f"(tier {min_tier} or lower), so no automated remediation should be "
+            "applied at all: expect an ESCALATION to a human"
+        )
+    if body.kind == "bad_deploy" and body.deploy_age_hours > float(window_h):
+        return (
+            f"the deploy is {body.deploy_age_hours:g}h old, past the {window_h}h "
+            "rollback_window, so ROLLBACK should be refused. The agent may still "
+            "remediate another permitted way, such as a restart, or escalate. "
+            "What it must not do is roll back"
+        )
+    if body.kind == "bad_deploy":
+        return (
+            f"the deploy is {body.deploy_age_hours:g}h old, inside the {window_h}h "
+            f"rollback_window, on a tier policy allows, so expect a ROLLBACK"
+        )
+    return (
+        f"tier {body.service_tier} is within what policy permits, so expect "
+        "automated remediation appropriate to the incident kind, followed by an "
+        "on-call notification"
+    )

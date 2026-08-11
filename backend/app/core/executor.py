@@ -55,7 +55,7 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
             raise ValueError(f"task {task_id} not found")
         task_text = rows[0]["input"]
 
-        candidate, mode = await _select_mode(task_text, db)
+        candidate, mode = await _select_mode(task_text, db, task_id)
 
         await db.q(
             "UPDATE tasks SET status = 'running', mode = %s, playbook_id = %s WHERE task_id = %s",
@@ -204,7 +204,9 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _select_mode(task_text: str, db) -> tuple[PlaybookCandidate | None, str]:
+async def _select_mode(
+    task_text: str, db, task_id: UUID | None = None
+) -> tuple[PlaybookCandidate | None, str]:
     """Decide guided vs explore. Anything short of a fresh hit means explore."""
     from .freshness import check_freshness
     from .retrieval import retrieve
@@ -226,7 +228,24 @@ async def _select_mode(task_text: str, db) -> tuple[PlaybookCandidate | None, st
         await record_retrieval_event(
             db,
             "retrieval.stale_block",
-            {"playbook_id": str(candidate.playbook_id), "stale": reason},
+            {
+                # task_id makes the refusal attributable: /api/tasks/{id}/explain
+                # has to say *why this run* went cold, and without it the only
+                # available answer is an aggregate count.
+                "task_id": str(task_id) if task_id else None,
+                "playbook_id": str(candidate.playbook_id),
+                "playbook_name": candidate.name,
+                "playbook_version": candidate.version,
+                "stale": reason,
+                "stale_deps": [
+                    {
+                        "rule_key": d.rule_key,
+                        "compiled_against": d.depends_on,
+                        "head": d.head,
+                    }
+                    for d in freshness.stale_deps
+                ],
+            },
         )
         return None, "explore"
 
@@ -394,7 +413,13 @@ async def _guided_mode(
         await record_retrieval_event(
             db,
             "retrieval.precondition_miss",
-            {"playbook_id": str(playbook.playbook_id), "failed": failed},
+            {
+                "task_id": str(task_id),
+                "playbook_id": str(playbook.playbook_id),
+                "playbook_name": playbook.name,
+                "playbook_version": playbook.version,
+                "failed": failed,
+            },
         )
         await db.q(
             "UPDATE tasks SET mode = 'explore', playbook_id = NULL WHERE task_id = %s",

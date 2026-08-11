@@ -13,6 +13,9 @@ import { PolicyPanel, Rule, ImpactResult } from "../components/PolicyPanel";
 import { OpsCopilot, CopilotAnswer } from "../components/OpsCopilot";
 import { RightRail, ApprovalRequest, Insight } from "../components/RightRail";
 import { IntelligencePanel } from "../components/IntelligencePanel";
+import { DecisionPanel } from "../components/DecisionPanel";
+import { IncidentComposer } from "../components/IncidentComposer";
+import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 
 const API_ROOT = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -66,10 +69,17 @@ function adaptPlaybook(raw: any): Playbook {
 const clockTime = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+/** The incident view has three faces: run one, understand one, author one. */
+type IncidentTab = "run" | "why" | "author";
+
 export default function CascadeApp() {
   const [view, setView] = useState<ViewId>("incidents");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tourVisible, setTourVisible] = useState(true);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [incidentTab, setIncidentTab] = useState<IncidentTab>("run");
+  /** The run the Why tab explains — the most recent one to reach a verdict. */
+  const [lastTaskId, setLastTaskId] = useState<string | null>(null);
 
   const [metrics, setMetrics] = useState<any>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
@@ -243,6 +253,11 @@ export default function CascadeApp() {
     es.addEventListener("insight.created", () => fetchInsights());
     es.addEventListener("postmortem.created", () => setRefreshKey((k) => k + 1));
 
+    // First visit only. localStorage is unavailable during SSR, so this has to
+    // happen after mount — which also means the shell paints behind the modal
+    // rather than the modal being the first thing that renders.
+    if (!tutorialSeen()) setTutorialOpen(true);
+
     const saved = localStorage.getItem("cascade_onboarding");
     if (saved) {
       try {
@@ -304,6 +319,29 @@ export default function CascadeApp() {
   }, []);
 
   /**
+   * A refusal is the whole point of the project and it is completely silent:
+   * a runbook matched, the freshness gate rejected it, and the agent quietly
+   * re-planned. On screen that is indistinguishable from having no runbook at
+   * all, which reads as the retrieval having failed. So say it out loud, and
+   * put the evidence one click away.
+   */
+  const announceDecision = useCallback(async (taskId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/tasks/${taskId}/explain`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const reason = data?.decision?.reason;
+      if (reason === "refused_stale") {
+        setToast("A matching runbook was refused: policy moved since it was compiled.");
+        setIncidentTab("why");
+      } else if (reason === "refused_precondition") {
+        setToast("A matching runbook was refused: its preconditions do not hold here.");
+        setIncidentTab("why");
+      }
+    } catch {}
+  }, []);
+
+  /**
    * Step and status topics are per-task (`task.{id}.step`), so handlers can
    * only attach once the id exists. The connection already subscribes to `*`,
    * so this just starts listening — no reconnect.
@@ -357,6 +395,8 @@ export default function CascadeApp() {
           if (["succeeded", "failed", "interrupted"].includes(data.status)) {
             setConsoleRunning(false);
             if (data.status === "interrupted") setConsoleInterrupted(true);
+            setLastTaskId(taskId);
+            void announceDecision(taskId);
             setTaskHistory((prev) => [
               {
                 id: `${taskId}-${Date.now()}`,
@@ -379,12 +419,15 @@ export default function CascadeApp() {
         [`task.${taskId}.status`, onStatus],
       ];
     },
-    [detachTaskListeners, refreshAll]
+    [detachTaskListeners, refreshAll, announceDecision]
   );
 
   const handleTaskSubmit = useCallback(
     async (input: string): Promise<string | null> => {
       setView("incidents");
+      // Always show the run itself. Landing on Why or Author while steps are
+      // streaming hides the thing the user just asked for.
+      setIncidentTab("run");
       setConsoleRunning(true);
       setConsoleSteps([]);
       setConsoleInterrupted(false);
@@ -433,6 +476,10 @@ export default function CascadeApp() {
             )
           ) {
             setConsoleRunning(false);
+            // The SSE handler covers the normal path, but a tour-driven run
+            // polls to completion and must land on the same explanation.
+            setLastTaskId(taskId);
+            void announceDecision(taskId);
             refreshAll();
             return;
           }
@@ -440,7 +487,7 @@ export default function CascadeApp() {
       }
       setConsoleRunning(false);
     },
-    [handleTaskSubmit, refreshAll]
+    [handleTaskSubmit, refreshAll, announceDecision]
   );
 
   // ------------------------------------------------------------------ actions
@@ -727,6 +774,36 @@ export default function CascadeApp() {
         run: () => setTourVisible((v) => !v),
       },
       {
+        id: "act:intro",
+        label: "Replay the introduction",
+        hint: "what Cascade is and what to watch for",
+        group: "Actions",
+        run: () => {
+          resetTutorial();
+          setTutorialOpen(true);
+        },
+      },
+      {
+        id: "act:author",
+        label: "Author a new incident",
+        hint: "test the agent on data it has never seen",
+        group: "Actions",
+        run: () => {
+          setView("incidents");
+          setIncidentTab("author");
+        },
+      },
+      {
+        id: "act:why",
+        label: "Explain the last run",
+        hint: "which gate decided it, and on what evidence",
+        group: "Actions",
+        run: () => {
+          setView("incidents");
+          setIncidentTab("why");
+        },
+      },
+      {
         id: "act:docs",
         label: "Open documentation",
         hint: "concepts, API, operations",
@@ -812,18 +889,71 @@ export default function CascadeApp() {
               {view === "incidents" && (
                 <div className={styles.split}>
                   <div className={styles.pane}>
-                    <IncidentConsole
-                      initialInput={consoleInput}
-                      isRunning={consoleRunning}
-                      mode={consoleMode}
-                      activePlaybookName={activePlaybookName}
-                      activePlaybookVersion={activePlaybookVersion}
-                      isInterrupted={consoleInterrupted}
-                      steps={consoleSteps}
-                      history={taskHistory}
-                      onSubmit={(input) => void handleTaskSubmit(input)}
-                      onInputChange={setConsoleInput}
-                    />
+                    <div className={styles.tabs} role="tablist">
+                      {(
+                        [
+                          ["run", "Run", "submit an incident and watch it execute"],
+                          ["why", "Why", "which gate decided this run, and on what evidence"],
+                          ["author", "Author", "create an incident the system has never seen"],
+                        ] as [IncidentTab, string, string][]
+                      ).map(([id, label, hint]) => (
+                        <button
+                          key={id}
+                          role="tab"
+                          aria-selected={incidentTab === id}
+                          title={hint}
+                          className={`${styles.tab} ${
+                            incidentTab === id ? styles.tabActive : ""
+                          }`}
+                          onClick={() => setIncidentTab(id)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* The console is kept mounted across tab switches: it holds
+                        the live step stream, and unmounting it mid-run would
+                        drop everything streamed so far. */}
+                    <div
+                      className={styles.tabPanel}
+                      style={{ display: incidentTab === "run" ? "flex" : "none" }}
+                    >
+                      <IncidentConsole
+                        initialInput={consoleInput}
+                        isRunning={consoleRunning}
+                        mode={consoleMode}
+                        activePlaybookName={activePlaybookName}
+                        activePlaybookVersion={activePlaybookVersion}
+                        isInterrupted={consoleInterrupted}
+                        steps={consoleSteps}
+                        history={taskHistory}
+                        onSubmit={(input) => void handleTaskSubmit(input)}
+                        onInputChange={setConsoleInput}
+                      />
+                    </div>
+
+                    {incidentTab === "why" && (
+                      <div className={styles.tabPanel}>
+                        <DecisionPanel
+                          apiBase={API_BASE}
+                          taskId={lastTaskId}
+                          onOpenPolicy={(key) => {
+                            setHighlightRule(key);
+                            setView("policy");
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {incidentTab === "author" && (
+                      <div className={styles.tabPanel}>
+                        <IncidentComposer
+                          apiBase={API_BASE}
+                          onRun={(input) => void handleTaskSubmit(input)}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className={`${styles.pane} ${styles.paneDivider}`}>
                     <RunbookLibrary
@@ -916,6 +1046,8 @@ export default function CascadeApp() {
         commands={commands}
         onClose={() => setPaletteOpen(false)}
       />
+
+      {tutorialOpen && <Tutorial onClose={() => setTutorialOpen(false)} />}
 
       {toast && <div className={styles.toast}>{toast}</div>}
 

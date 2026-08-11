@@ -228,10 +228,30 @@ aws lambda add-permission \
     --region "$REGION" \
     --no-cli-pager >/dev/null 2>&1 || echo "  (permission already granted)"
 
-# handler.lambda_handler routes on source == aws.events
+# handler.lambda_handler routes on source == aws.events.
+#
+# The target goes in as a JSON file rather than shorthand: `Input=` carries a
+# JSON document, and the shorthand parser stops at its first quote
+# ("Expected: '=', received: '\"'"). Writing the whole target as JSON sidesteps
+# the shorthand grammar entirely.
+TARGET_JSON="$INFRA_DIR/.awstmp/sweeper-target.json"
+cat > "$TARGET_JSON" <<EOF
+[
+  {
+    "Id": "1",
+    "Arn": "${FUNCTION_ARN}",
+    "Input": "{\"source\":\"aws.events\",\"sweeper\":true}"
+  }
+]
+EOF
+
+# Native path for the same reason as ZIP_FOR_AWS above: aws.exe cannot resolve
+# a git-bash /c/... path, and MSYS path conversion is disabled for this script.
+TARGET_FOR_AWS="$(cygpath -w "$TARGET_JSON" 2>/dev/null || echo "$TARGET_JSON")"
+
 aws events put-targets \
     --rule "$RULE_NAME" \
-    --targets "Id=1,Arn=${FUNCTION_ARN},Input={\"source\":\"aws.events\",\"sweeper\":true}" \
+    --targets "file://${TARGET_FOR_AWS}" \
     --region "$REGION" \
     --no-cli-pager >/dev/null
 
