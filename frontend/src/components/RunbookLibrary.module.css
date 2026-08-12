@@ -246,3 +246,61 @@
 .actionBtnPrimary:hover {
   background-color: var(--accent-dim);
 }
+
+/* --- learning in progress ------------------------------------------------ */
+
+.compiling {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px dashed var(--accent-dim);
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-soft);
+  padding: 11px 13px;
+}
+
+.compilingTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.compilingBody {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.compilingDots {
+  display: inline-flex;
+  gap: 3px;
+  padding-top: 6px;
+}
+
+.compilingDots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  animation: compileBlink 1.1s ease-in-out infinite;
+}
+
+.compilingDots i:nth-child(2) { animation-delay: 0.18s; }
+.compilingDots i:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes compileBlink {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+
+.empty {
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compilingDots i { animation: none; opacity: 0.8; }
+}

@@ -129,6 +129,12 @@
 .nodeFail .sub { fill: var(--st-suspect); }
 .nodeFail .tick { fill: var(--st-suspect); }
 
+/* An empty memory is neutral, not a warning. */
+.nodeMiss .box { fill: var(--surface); stroke: var(--border-strong); }
+.nodeMiss .title { fill: var(--text-dim); }
+.nodeMiss .sub { fill: var(--text-faint); }
+.nodeMiss .tick { fill: var(--text-faint); }
+
 .nodeSkipped { opacity: 0.32; }
 
 .nodeDone .box { fill: var(--raised); stroke: var(--st-active); }

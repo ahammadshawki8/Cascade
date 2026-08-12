@@ -88,6 +88,7 @@ export default function CascadeApp() {
   /** Shared by the decision map and the narrator line. */
   const [explanation, setExplanation] = useState<any>(null);
   const [activeIncident, setActiveIncident] = useState<string | null>(null);
+  const [compiling, setCompiling] = useState(false);
 
   const [metrics, setMetrics] = useState<any>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
@@ -134,12 +135,19 @@ export default function CascadeApp() {
     } catch {}
   }, []);
 
+  // Read synchronously while polling for a freshly compiled runbook: reading
+  // `playbooks` there would close over the value from the render that started
+  // the poll and never see the update.
+  const playbookCountRef = useRef(0);
+
   const fetchPlaybooks = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/playbooks`);
       if (res.ok) {
         const data = await res.json();
-        setPlaybooks((data.playbooks ?? []).map(adaptPlaybook));
+        const next = (data.playbooks ?? []).map(adaptPlaybook);
+        playbookCountRef.current = next.length;
+        setPlaybooks(next);
       }
     } catch {}
   }, []);
@@ -339,6 +347,21 @@ export default function CascadeApp() {
       if (!res.ok) return;
       const data = await res.json();
       setExplanation(data);
+
+      // A cold run that worked is about to become a runbook, but compilation
+      // happens in a worker and lands seconds later. Say so, and stop saying it
+      // the moment the runbook actually appears.
+      if (data?.mode === "explore" && data?.status === "succeeded") {
+        setCompiling(true);
+        const before = playbookCountRef.current;
+        for (let i = 0; i < 15; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          await fetchPlaybooks();
+          if (playbookCountRef.current > before) break;
+        }
+        setCompiling(false);
+      }
+
       const reason = data?.decision?.reason;
       if (reason === "refused_stale") {
         setToast("A matching runbook was refused: policy moved since it was compiled.");
@@ -348,7 +371,7 @@ export default function CascadeApp() {
         setIncidentTab("why");
       }
     } catch {}
-  }, []);
+  }, [fetchPlaybooks]);
 
   /**
    * Step and status topics are per-task (`task.{id}.step`), so handlers can
@@ -1005,6 +1028,7 @@ export default function CascadeApp() {
                   <div className={`${styles.pane} ${styles.paneDivider}`}>
                     <RunbookLibrary
                       playbooks={playbooks}
+                      compiling={compiling}
                       onRelearn={handleRelearn}
                       onViewEpisodes={handleViewEpisodes}
                     />

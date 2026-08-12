@@ -19,7 +19,15 @@ import styles from "./DecisionMap.module.css";
  */
 
 export type Stage = "search" | "freshness" | "preconditions" | "replay" | "plan" | "execute";
-export type NodeState = "idle" | "active" | "pass" | "fail" | "skipped";
+/**
+ * `miss` and `fail` are deliberately different states.
+ *
+ * Finding nothing in memory is not a refusal — on a first-ever run it is the
+ * only possible outcome, and colouring it amber tells a viewer something went
+ * wrong at the exact moment the system is behaving perfectly. Amber is
+ * reserved for the case that actually matters: memory was found, and rejected.
+ */
+export type NodeState = "idle" | "active" | "pass" | "miss" | "fail" | "skipped";
 
 export interface MapModel {
   /** Set once a task is submitted. */
@@ -158,7 +166,7 @@ export function buildMapModel(args: {
         ...common,
         playbook: null,
         states: {
-          search: "fail",
+          search: "miss",
           freshness: "skipped",
           preconditions: "skipped",
           replay: "skipped",
@@ -280,8 +288,10 @@ export function DecisionMap({ model }: { model: MapModel }) {
           />
         )}
 
-        {/* incident -> plan, when nothing matched at all */}
-        {st("search") === "fail" && (
+        {/* Nothing in memory at all: one plain edge straight to the cold lane.
+            No drop, because nothing was rejected — there was simply nothing
+            there. */}
+        {st("search") === "miss" && (
           <Edge
             d={`M ${INCIDENT.x + INCIDENT.w / 2} ${INCIDENT.y + INCIDENT.h}
                 C ${INCIDENT.x + INCIDENT.w / 2} ${BOT_Y}, 200 ${BOT_Y + NODE_H / 2}, ${NODES.plan.x} ${BOT_Y + NODE_H / 2}`}
@@ -409,11 +419,13 @@ function Node({
       ? styles.nodePass
       : state === "fail"
         ? styles.nodeFail
-        : state === "skipped"
-          ? styles.nodeSkipped
-          : state === "active"
-            ? styles.nodeActive
-            : styles.nodeIdle;
+        : state === "miss"
+          ? styles.nodeMiss
+          : state === "skipped"
+            ? styles.nodeSkipped
+            : state === "active"
+              ? styles.nodeActive
+              : styles.nodeIdle;
 
   return (
     <g className={`${cls} ${current ? styles.nodeCurrent : ""}`}>
@@ -422,14 +434,20 @@ function Node({
         {n.label}
       </text>
       <text x={n.x + n.w / 2} y={n.y + 38} className={styles.sub}>
-        {state === "fail" ? "refused" : state === "skipped" ? "not reached" : n.sub}
+        {state === "fail"
+          ? "refused"
+          : state === "miss"
+            ? "nothing in memory"
+            : state === "skipped"
+              ? "not reached"
+              : n.sub}
       </text>
 
       {/* a verdict tick sits on the corner rather than in the label, so the
           node's name never moves as its state changes */}
-      {(state === "pass" || state === "fail") && (
+      {(state === "pass" || state === "fail" || state === "miss") && (
         <text x={n.x + n.w - 9} y={n.y + 15} className={styles.tick}>
-          {state === "pass" ? "✓" : "✕"}
+          {state === "pass" ? "✓" : state === "miss" ? "–" : "✕"}
         </text>
       )}
 

@@ -38,12 +38,23 @@ export interface Playbook {
 
 interface RunbookLibraryProps {
   playbooks: Playbook[];
+  /**
+   * A cold run has finished and its runbook is still being compiled.
+   *
+   * Compilation is asynchronous — the run writes an outbox row, a worker picks
+   * it up, and the runbook lands seconds later. Nothing said so, so the obvious
+   * next move (immediately run a second incident) happened before there was
+   * anything to reuse, and the headline demo step silently failed. The library
+   * looking empty is exactly when a viewer most needs to be told to wait.
+   */
+  compiling?: boolean;
   onRelearn?: (id: string) => void | Promise<void>;
   onViewEpisodes?: (id: string) => void;
 }
 
 export function RunbookLibrary({
   playbooks,
+  compiling = false,
   onRelearn,
   onViewEpisodes,
 }: RunbookLibraryProps) {
@@ -92,6 +103,28 @@ export function RunbookLibrary({
       </div>
 
       <div className={styles.list}>
+        {compiling && (
+          <div className={styles.compiling}>
+            <span className={styles.compilingDots}>
+              <i /> <i /> <i />
+            </span>
+            <div>
+              <div className={styles.compilingTitle}>Writing a runbook from that run</div>
+              <div className={styles.compilingBody}>
+                Give it a few seconds. Until it lands there is nothing to reuse,
+                and the next incident would explore from scratch again.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {playbooks.length === 0 && !compiling && (
+          <div className={styles.empty}>
+            Nothing learned yet. Fix an incident from the Inbox and the runbook
+            compiled from it will appear here.
+          </div>
+        )}
+
         {playbooks.map((pb) => {
           const isExpanded = expandedId === pb.playbook_id;
           const statusClass = getStatusClass(pb.status_cache);
