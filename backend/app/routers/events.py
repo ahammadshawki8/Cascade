@@ -9,7 +9,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any
@@ -70,23 +69,20 @@ async def stream_events(
                 "data": json.dumps(payload["data"], default=str),
             }
 
-    async def heartbeat_generator():
-        """Wrap the event generator with periodic heartbeats."""
-        gen = event_generator()
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                # Wait for next event, but send heartbeat if nothing arrives
-                event = await asyncio.wait_for(gen.__anext__(), timeout=HEARTBEAT_SECONDS)
-                yield event
-            except TimeoutError:
-                yield {"event": "heartbeat", "data": ""}
-            except StopAsyncIteration:
-                break
-
+    # Heartbeats come from sse-starlette's own `ping`, which emits on a separate
+    # task alongside the stream.
+    #
+    # They used to be hand-rolled as `asyncio.wait_for(gen.__anext__(), 15)`,
+    # which looked equivalent and was not: on timeout `wait_for` *cancels* the
+    # pending `__anext__`, leaving the generator unusable, so the next loop
+    # iteration tore the stream down. Locally nothing noticed, because a demo
+    # rarely goes 15s without an event. Deployed, an idle dashboard dropped its
+    # connection every 15 seconds and spent most of its life reconnecting, with
+    # every step published during a gap lost. Measured in a real browser:
+    # onopen at 894ms, onerror at 15,895ms, then stuck in CONNECTING.
     return EventSourceResponse(
-        heartbeat_generator(),
+        event_generator(),
+        ping=HEARTBEAT_SECONDS,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
