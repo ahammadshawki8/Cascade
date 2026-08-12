@@ -48,6 +48,14 @@ interface RunbookLibraryProps {
    * looking empty is exactly when a viewer most needs to be told to wait.
    */
   compiling?: boolean;
+  /**
+   * The runbook currently being re-learned.
+   *
+   * Re-learning is a full cold run plus a compile, running in a worker for the
+   * best part of a minute. It reported a toast and then went silent, which at
+   * the closing step of the demo reads as the button not having worked.
+   */
+  relearningId?: string | null;
   onRelearn?: (id: string) => void | Promise<void>;
   onViewEpisodes?: (id: string) => void;
 }
@@ -55,6 +63,7 @@ interface RunbookLibraryProps {
 export function RunbookLibrary({
   playbooks,
   compiling = false,
+  relearningId = null,
   onRelearn,
   onViewEpisodes,
 }: RunbookLibraryProps) {
@@ -164,7 +173,21 @@ export function RunbookLibrary({
                   it was buried behind expanding the card — so the moment the
                   demo builds up to was followed by a dead end. Surfaced on the
                   collapsed card, with the reason next to it. */}
-              {(pb.status_cache === "suspect" || pb.status_cache === "invalidated") &&
+              {relearningId === pb.playbook_id && (
+                <div className={styles.relearning}>
+                  <span className={styles.relearnDots}>
+                    <i /> <i /> <i />
+                  </span>
+                  <span className={styles.relearnText}>
+                    Re-solving this incident under the current rules, then
+                    compiling the result as v{pb.version + 1}. This is a full
+                    cold run, so it takes about as long as the first one did.
+                  </span>
+                </div>
+              )}
+
+              {relearningId !== pb.playbook_id &&
+                (pb.status_cache === "suspect" || pb.status_cache === "invalidated") &&
                 onRelearn && (
                   <div className={styles.quarantine}>
                     <span className={styles.quarantineText}>

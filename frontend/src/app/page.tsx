@@ -89,6 +89,7 @@ export default function CascadeApp() {
   const [explanation, setExplanation] = useState<any>(null);
   const [activeIncident, setActiveIncident] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
+  const [relearningId, setRelearningId] = useState<string | null>(null);
   /** Act progression is derived from what actually happened, never stored. */
   const [guidedRunHappened, setGuidedRunHappened] = useState(false);
   const [policyChanged, setPolicyChanged] = useState(false);
@@ -139,6 +140,7 @@ export default function CascadeApp() {
   // `playbooks` there would close over the value from the render that started
   // the poll and never see the update.
   const playbookCountRef = useRef(0);
+  const playbooksRef = useRef<Playbook[]>([]);
 
   const fetchPlaybooks = useCallback(async () => {
     try {
@@ -147,6 +149,7 @@ export default function CascadeApp() {
         const data = await res.json();
         const next = (data.playbooks ?? []).map(adaptPlaybook);
         playbookCountRef.current = next.length;
+        playbooksRef.current = next;
         setPlaybooks(next);
       }
     } catch {}
@@ -578,6 +581,13 @@ export default function CascadeApp() {
     setTimeout(refreshAll, 3000);
   };
 
+  /**
+   * Re-learning is a whole cold run plus a compile, happening in a worker, and
+   * it used to report a toast and then nothing for the next minute. That is the
+   * final step of the demo, so silence there reads as the button not having
+   * worked. Poll until the successor actually exists and keep the card saying
+   * what is happening until it does.
+   */
   const handleRelearn = async (playbookId: string) => {
     try {
       const res = await fetch(`${PRIVILEGED}/playbooks/${playbookId}/relearn`, {
@@ -586,8 +596,23 @@ export default function CascadeApp() {
       setToast((await res.json()).message ?? "Re-learn queued.");
     } catch {
       setToast("Could not queue the re-learn.");
+      return;
     }
-    setTimeout(refreshAll, 6000);
+
+    setRelearningId(playbookId);
+    // Done when a successor exists, not when the request returned: the worker
+    // has to re-solve the incident before there is anything new to show.
+    for (let i = 0; i < 45; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      await fetchPlaybooks();
+      const successor = playbooksRef.current.find((p) => p.supersedes === playbookId);
+      if (successor) {
+        setToast(`Re-learned as ${successor.name} v${successor.version}.`);
+        break;
+      }
+    }
+    setRelearningId(null);
+    refreshAll();
   };
 
   const handleViewEpisodes = async (playbookId: string) => {
@@ -971,6 +996,7 @@ export default function CascadeApp() {
                     <RunbookLibrary
                       playbooks={playbooks}
                       compiling={compiling}
+                      relearningId={relearningId}
                       onRelearn={handleRelearn}
                       onViewEpisodes={handleViewEpisodes}
                     />
