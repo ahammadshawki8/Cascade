@@ -31,7 +31,25 @@ const API_ROOT =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8000";
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "dev-admin-token";
+/**
+ * Runtime first, build-time inlined value second (see next.config.ts).
+ *
+ * Amplify console variables reach the build but not the SSR runtime, so on the
+ * deployed site `process.env.ADMIN_TOKEN` was undefined and this fell through
+ * to `dev-admin-token`. The backend rejects that token, so every privileged
+ * call returned `403 invalid token` — reset, policy commits and approvals were
+ * all dead on the deployed demo while working perfectly in local dev.
+ *
+ * Trimmed on both paths: a console-pasted secret can carry trailing
+ * whitespace.
+ */
+// `||`, not `??`: an unset Amplify variable inlines as an empty string, which
+// `??` would happily accept as the token.
+const ADMIN_TOKEN = (
+  process.env.ADMIN_TOKEN ||
+  process.env.BUILD_ADMIN_TOKEN ||
+  "dev-admin-token"
+).trim();
 
 /**
  * Explicit allowlist. Without it this is an open relay that grants admin
