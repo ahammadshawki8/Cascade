@@ -1,7 +1,13 @@
 .console {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* `height: 100%` was correct when the console filled the pane alone. It now
+     sits below the decision map and the narrator line, so asking for the full
+     height pushed its own bottom past the viewport — the step stream's
+     `overflow-y: auto` never engaged and the run became unscrollable once it
+     was a few steps long. `flex: 1` takes the space that is actually left. */
+  flex: 1;
+  min-height: 0;
   background-color: var(--surface);
   border-right: 1px solid var(--border);
 }

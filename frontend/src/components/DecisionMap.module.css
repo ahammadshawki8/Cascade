@@ -1,4 +1,6 @@
 .wrap {
+  /* Fixed-size sibling above a scrolling console: it must not be squeezed. */
+  flex-shrink: 0;
   padding: 10px 12px 4px;
   border-bottom: 1px solid var(--border);
   background-color: var(--bg-chrome);

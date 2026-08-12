@@ -154,11 +154,40 @@ export function RunbookLibrary({
               </div>
               
               <div className={styles.confidenceBar}>
-                <div 
-                  className={`${styles.confidenceFill} ${statusClass}`} 
+                <div
+                  className={`${styles.confidenceFill} ${statusClass}`}
                   style={{ width: `${pb.confidence * 100}%` }}
                 />
               </div>
+
+              {/* A quarantined runbook has exactly one useful next action, and
+                  it was buried behind expanding the card — so the moment the
+                  demo builds up to was followed by a dead end. Surfaced on the
+                  collapsed card, with the reason next to it. */}
+              {(pb.status_cache === "suspect" || pb.status_cache === "invalidated") &&
+                onRelearn && (
+                  <div className={styles.quarantine}>
+                    <span className={styles.quarantineText}>
+                      Quarantined: a rule it was built on changed. Re-learn to
+                      rebuild it under current policy as v{pb.version + 1}.
+                    </span>
+                    <button
+                      className={styles.quarantineBtn}
+                      disabled={busyId === pb.playbook_id}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setBusyId(pb.playbook_id);
+                        try {
+                          await onRelearn(pb.playbook_id);
+                        } finally {
+                          setBusyId(null);
+                        }
+                      }}
+                    >
+                      {busyId === pb.playbook_id ? "Queueing…" : "Re-learn"}
+                    </button>
+                  </div>
+                )}
 
               {isExpanded && (
                 <div className={styles.cardBody}>
