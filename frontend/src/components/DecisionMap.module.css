@@ -1,0 +1,178 @@
+.wrap {
+  padding: 10px 12px 4px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-chrome);
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.laneLabels {
+  display: flex;
+  gap: 18px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.laneWarm { color: var(--accent); }
+.laneCold { color: var(--text-faint); }
+
+/* --- lanes --------------------------------------------------------------- */
+
+.lane {
+  fill: transparent;
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  transition: fill 260ms ease-out, stroke 260ms ease-out;
+}
+
+.laneOnWarm {
+  fill: var(--accent-soft);
+  stroke: var(--accent-dim);
+  stroke-dasharray: none;
+}
+
+.laneOnCold {
+  fill: #1B202455;
+  stroke: var(--border-strong);
+  stroke-dasharray: none;
+}
+
+/* --- edges --------------------------------------------------------------- */
+
+.edge {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  color: var(--border-strong); /* drives the arrowhead via currentColor */
+  opacity: 0.45;
+  transition: stroke 240ms ease-out, opacity 240ms ease-out;
+}
+
+.edgeOn {
+  stroke: var(--accent);
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* Amber, not red: a refusal is the system working correctly. Red is reserved
+   for genuine failure, and miscolouring this would teach the wrong lesson. */
+.edgeRefused {
+  stroke: var(--st-suspect);
+  color: var(--st-suspect);
+  opacity: 1;
+  stroke-dasharray: 5 3;
+  animation: flow 700ms linear infinite;
+}
+
+@keyframes flow {
+  to { stroke-dashoffset: -16; }
+}
+
+/* --- nodes --------------------------------------------------------------- */
+
+.box {
+  fill: var(--raised);
+  stroke: var(--border);
+  stroke-width: 1;
+  transition: fill 240ms ease-out, stroke 240ms ease-out;
+}
+
+.title {
+  fill: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-anchor: middle;
+  font-family: var(--font-ibm-plex-sans), sans-serif;
+}
+
+.sub {
+  fill: var(--text-faint);
+  font-size: 9.5px;
+  text-anchor: middle;
+  font-family: var(--font-ibm-plex-sans), sans-serif;
+}
+
+.tick {
+  font-size: 11px;
+  text-anchor: middle;
+  font-weight: 700;
+}
+
+.badge,
+.thinking {
+  font-size: 9.5px;
+  text-anchor: middle;
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.badge { fill: var(--accent); }
+.thinking { fill: var(--st-suspect); }
+
+.nodeIdle .box { fill: var(--surface); stroke: var(--border); }
+.nodeIdle .title { fill: var(--text-faint); }
+
+.nodeActive .box { fill: var(--raised); stroke: var(--accent); }
+.nodeActive .title { fill: var(--text); }
+
+.nodePass .box { stroke: var(--accent-dim); }
+.nodePass .tick { fill: var(--st-active); }
+
+.nodeFail .box { fill: #1F1B14; stroke: var(--st-suspect); stroke-width: 1.6; }
+.nodeFail .title { fill: var(--st-suspect); }
+.nodeFail .sub { fill: var(--st-suspect); }
+.nodeFail .tick { fill: var(--st-suspect); }
+
+.nodeSkipped { opacity: 0.32; }
+
+.nodeDone .box { fill: var(--raised); stroke: var(--st-active); }
+.nodeDone .title { fill: var(--st-active); }
+
+/* The node the agent is standing on right now. */
+.nodeCurrent .box {
+  stroke: var(--accent);
+  stroke-width: 2;
+  animation: pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { stroke-opacity: 1; }
+  50%      { stroke-opacity: 0.35; }
+}
+
+/* --- provenance callout -------------------------------------------------- */
+
+.ruleBox {
+  fill: #1F1B14;
+  stroke: var(--st-suspect);
+  stroke-width: 1;
+}
+
+.ruleKey {
+  fill: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.ruleVer {
+  font-size: 9.5px;
+  text-anchor: middle;
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.verOld { fill: var(--st-invalid); text-decoration: line-through; }
+.verArrow { fill: var(--text-faint); }
+.verNew { fill: var(--st-active); }
+.ruleNote { fill: var(--text-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .edgeRefused, .nodeCurrent .box { animation: none; }
+}

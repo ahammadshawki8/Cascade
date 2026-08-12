@@ -16,6 +16,9 @@ import { IntelligencePanel } from "../components/IntelligencePanel";
 import { DecisionPanel } from "../components/DecisionPanel";
 import { IncidentComposer } from "../components/IncidentComposer";
 import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
+import { DecisionMap, buildMapModel } from "../components/DecisionMap";
+import { IncidentInbox } from "../components/IncidentInbox";
+import { narrateState } from "../components/narrate";
 
 const API_ROOT = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -69,17 +72,22 @@ function adaptPlaybook(raw: any): Playbook {
 const clockTime = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** The incident view has three faces: run one, understand one, author one. */
-type IncidentTab = "run" | "why" | "author";
+/** Pick one, watch it run, understand it, or invent your own. */
+type IncidentTab = "inbox" | "run" | "why" | "author";
 
 export default function CascadeApp() {
   const [view, setView] = useState<ViewId>("incidents");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tourVisible, setTourVisible] = useState(true);
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  const [incidentTab, setIncidentTab] = useState<IncidentTab>("run");
+  // Opens on the inbox: a blank command box asks the viewer to already know
+  // the incident ids and their exact format before anything can happen.
+  const [incidentTab, setIncidentTab] = useState<IncidentTab>("inbox");
   /** The run the Why tab explains — the most recent one to reach a verdict. */
   const [lastTaskId, setLastTaskId] = useState<string | null>(null);
+  /** Shared by the decision map and the narrator line. */
+  const [explanation, setExplanation] = useState<any>(null);
+  const [activeIncident, setActiveIncident] = useState<string | null>(null);
 
   const [metrics, setMetrics] = useState<any>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
@@ -330,6 +338,7 @@ export default function CascadeApp() {
       const res = await fetch(`${API_BASE}/tasks/${taskId}/explain`);
       if (!res.ok) return;
       const data = await res.json();
+      setExplanation(data);
       const reason = data?.decision?.reason;
       if (reason === "refused_stale") {
         setToast("A matching runbook was refused: policy moved since it was compiled.");
@@ -428,6 +437,8 @@ export default function CascadeApp() {
       // Always show the run itself. Landing on Why or Author while steps are
       // streaming hides the thing the user just asked for.
       setIncidentTab("run");
+      setExplanation(null);
+      setActiveIncident((input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase() ?? input);
       setConsoleRunning(true);
       setConsoleSteps([]);
       setConsoleInterrupted(false);
@@ -892,7 +903,8 @@ export default function CascadeApp() {
                     <div className={styles.tabs} role="tablist">
                       {(
                         [
-                          ["run", "Run", "submit an incident and watch it execute"],
+                          ["inbox", "Inbox", "open incidents waiting to be fixed"],
+                          ["run", "Run", "watch the agent work, step by step"],
                           ["why", "Why", "which gate decided this run, and on what evidence"],
                           ["author", "Author", "create an incident the system has never seen"],
                         ] as [IncidentTab, string, string][]
@@ -912,6 +924,17 @@ export default function CascadeApp() {
                       ))}
                     </div>
 
+                    {incidentTab === "inbox" && (
+                      <div className={styles.tabPanel}>
+                        <IncidentInbox
+                          apiBase={API_BASE}
+                          refreshKey={refreshKey}
+                          runningId={consoleRunning ? activeIncident : null}
+                          onRun={(input) => void handleTaskSubmit(input)}
+                        />
+                      </div>
+                    )}
+
                     {/* The console is kept mounted across tab switches: it holds
                         the live step stream, and unmounting it mid-run would
                         drop everything streamed so far. */}
@@ -919,6 +942,30 @@ export default function CascadeApp() {
                       className={styles.tabPanel}
                       style={{ display: incidentTab === "run" ? "flex" : "none" }}
                     >
+                      <DecisionMap
+                        model={buildMapModel({
+                          incident: activeIncident,
+                          running: consoleRunning,
+                          mode: consoleMode,
+                          playbookName: activePlaybookName,
+                          playbookVersion: activePlaybookVersion,
+                          explanation,
+                        })}
+                      />
+
+                      {/* One sentence, in the agent's voice. The cheapest
+                          possible answer to "what is it doing right now". */}
+                      {(() => {
+                        const line = narrateState({
+                          running: consoleRunning,
+                          mode: consoleMode,
+                          playbookName: activePlaybookName,
+                          outcome: explanation?.result,
+                          refusal: explanation?.decision?.reason ?? null,
+                        });
+                        return line ? <div className={styles.narrator}>{line}</div> : null;
+                      })()}
+
                       <IncidentConsole
                         initialInput={consoleInput}
                         isRunning={consoleRunning}

@@ -175,6 +175,18 @@
   flex-direction: column;
 }
 
+/* The running commentary above the step stream. Deliberately the largest text
+   in the pane: it is the only thing a first-time viewer is guaranteed to read. */
+.narrator {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  flex-shrink: 0;
+}
+
 .full {
   flex: 1;
   min-width: 0;

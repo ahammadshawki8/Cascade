@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Search, Zap, Check, X } from "lucide-react";
+import { narrate } from "./narrate";
 import styles from "./IncidentConsole.module.css";
 
 export interface StepEvent {
@@ -76,6 +77,36 @@ export function IncidentConsole({
       .join(", ");
   };
 
+  /**
+   * Tool calls take single-digit milliseconds; the seconds between them are the
+   * planner deciding what to do next. With nothing rendered in the gap the app
+   * looks frozen for most of a cold run, and the one thing a viewer most needs
+   * to understand — that thinking is the entire cost — is invisible.
+   *
+   * Inferred from the gap since the last step rather than reported by the
+   * server: the gap *is* the thinking, so no new event is needed.
+   */
+  const [thinkingMs, setThinkingMs] = useState<number | null>(null);
+  const lastStepAt = useRef<number>(Date.now());
+
+  useEffect(() => {
+    lastStepAt.current = Date.now();
+    setThinkingMs(null);
+  }, [steps.length]);
+
+  useEffect(() => {
+    if (!isRunning) {
+      setThinkingMs(null);
+      return;
+    }
+    const timer = setInterval(() => {
+      const gap = Date.now() - lastStepAt.current;
+      // Below a second a spinner would just flicker between fast steps.
+      setThinkingMs(gap > 900 ? gap : null);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [isRunning]);
+
   return (
     <div className={styles.console}>
       <div className={styles.header}>
@@ -117,25 +148,55 @@ export function IncidentConsole({
         </div>
 
         <div className={styles.stepStream} ref={streamRef}>
-          {steps.map((step, idx) => (
-            <div key={step.id || idx} className={styles.stepRow}>
-              <span className={styles.stepIndex}>
-                {(idx + 1).toString().padStart(2, "0")}
-              </span>
-              <span className={styles.stepTool}>{step.tool}</span>
-              <span className={styles.stepArgs}>{formatArgs(step.args)}</span>
-              {step.error ? (
-                <X size={14} color="var(--st-invalid)" />
-              ) : (
-                <Check size={14} color="var(--st-active)" />
-              )}
-              {/* `0 && …` renders a literal 0 in JSX — a sub-millisecond step
-                  would print a stray "0" next to the tool name. */}
-              {step.duration_ms != null && (
-                <span className={styles.stepDuration}>{step.duration_ms}ms</span>
-              )}
+          {steps.length === 0 && !isRunning && (
+            <div className={styles.empty}>
+              Pick an incident and the agent&rsquo;s reasoning will appear here,
+              one step at a time.
             </div>
-          ))}
+          )}
+
+          {steps.map((step, idx) => {
+            const { question, answer } = narrate(step.tool, step.args);
+            return (
+              <div key={step.id || idx} className={styles.stepCard}>
+                <div className={styles.stepHead}>
+                  <span className={styles.stepIndex}>
+                    {(idx + 1).toString().padStart(2, "0")}
+                  </span>
+                  <span className={styles.stepQuestion}>{question}</span>
+                  {step.error ? (
+                    <X size={14} color="var(--st-invalid)" />
+                  ) : (
+                    <Check size={14} color="var(--st-active)" />
+                  )}
+                  {/* `0 && …` renders a literal 0 in JSX — a sub-millisecond
+                      step would print a stray "0" next to the tool name. */}
+                  {step.duration_ms != null && (
+                    <span className={styles.stepDuration}>{step.duration_ms}ms</span>
+                  )}
+                </div>
+                {answer && <div className={styles.stepAnswer}>{answer}</div>}
+                {/* The exact call stays one click away, so nothing is hidden
+                    from anyone who wants to audit what actually ran. */}
+                <details className={styles.stepRaw}>
+                  <summary>{step.tool}</summary>
+                  <code>{formatArgs(step.args)}</code>
+                </details>
+              </div>
+            );
+          })}
+
+          {thinkingMs != null && (
+            <div className={styles.thinking}>
+              <span className={styles.thinkingDots}>
+                <i /> <i /> <i />
+              </span>
+              deciding what to do next
+              <span className={styles.thinkingTime}>
+                {(thinkingMs / 1000).toFixed(1)}s
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

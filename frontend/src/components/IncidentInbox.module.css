@@ -1,0 +1,206 @@
+.inbox {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background-color: var(--surface);
+}
+
+.policyBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-chrome);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.policyTitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.policyItem {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.policyItem b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.empty {
+  padding: 24px 16px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 16px;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--raised);
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "top    run"
+    "what   run"
+    "flags  run";
+  column-gap: 12px;
+  align-items: center;
+  transition: border-color 160ms ease-out;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+}
+
+.cardRunning {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOpen { background-color: var(--st-invalid); }
+.dotMitigated { background-color: var(--st-active); }
+
+.service {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.id {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.tier,
+.sev {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+}
+
+.tierBlocked {
+  border-color: var(--st-suspect);
+  color: var(--st-suspect);
+}
+
+.what {
+  grid-area: what;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.when {
+  color: var(--text-faint);
+}
+
+.flags {
+  grid-area: flags;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.flagBlock,
+.flagOk,
+.flagDone {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+
+/* Amber, matching the refusal colour everywhere else: policy blocking an
+   action is the system working, not an error. */
+.flagBlock {
+  background-color: #1F1B14;
+  border: 1px solid var(--st-suspect);
+  color: var(--st-suspect);
+}
+
+.flagOk {
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+}
+
+.flagDone {
+  border: 1px solid var(--st-active);
+  color: var(--st-active);
+}
+
+.run {
+  grid-area: run;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.run:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.run:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}

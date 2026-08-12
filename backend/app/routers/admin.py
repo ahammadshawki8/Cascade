@@ -199,6 +199,64 @@ class NewIncident(BaseModel):
     cpu_usage: float = Field(default=0.4, ge=0, le=1)
 
 
+@router.get("/mock/incidents")
+async def list_incidents():
+    """The incident inbox.
+
+    Carries the policy verdict for each incident alongside its raw fields, so
+    the UI can show *why* two otherwise identical incidents will be treated
+    differently. That comparison is the thing a first-time viewer has to
+    understand, and making them infer it from a raw timestamp does not work.
+
+    Read-only and unauthenticated, matching the rest of the incident surface.
+    """
+    if _stub_mode():
+        return {"incidents": []}
+
+    from app.db import q
+
+    rows = await q(
+        """
+        SELECT incident_id, kind, severity, service_name, service_tier, state,
+               error_rate, cpu_usage,
+               EXTRACT(EPOCH FROM (now() - deploy_timestamp)) / 3600
+                   AS deploy_age_hours
+        FROM mock_incidents
+        ORDER BY incident_id
+        """
+    )
+
+    rule_rows = await q(
+        "SELECT rule_key, params FROM rules r WHERE version = "
+        "(SELECT max(version) FROM rules WHERE rule_key = r.rule_key)"
+    )
+    params = {r["rule_key"]: (r["params"] or {}) for r in rule_rows}
+    min_tier = int(params.get("incident.auto_remediate_tier", {}).get("min_tier", 2))
+    window_h = float(params.get("incident.rollback_window", {}).get("hours", 24))
+
+    incidents = []
+    for row in rows:
+        age = row["deploy_age_hours"]
+        age = float(age) if age is not None else None
+        # None, not False, when the rule does not apply: an error spike has no
+        # deploy to roll back, and rendering that as "outside the window" would
+        # invent a refusal that never happens.
+        within_window = None if age is None else age <= window_h
+        incidents.append(
+            {
+                **{k: v for k, v in row.items() if k != "deploy_age_hours"},
+                "deploy_age_hours": age,
+                "tier_allowed": row["service_tier"] >= min_tier,
+                "within_window": within_window,
+            }
+        )
+
+    return {
+        "incidents": incidents,
+        "policy": {"min_tier": min_tier, "rollback_window_hours": window_h},
+    }
+
+
 @router.post("/mock/incidents", status_code=201)
 async def create_incident(body: NewIncident):
     """Author an incident, then run the agent on it.
