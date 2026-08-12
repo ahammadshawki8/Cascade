@@ -72,6 +72,9 @@ function adaptPlaybook(raw: any): Playbook {
 const clockTime = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+/** Bumped whenever the guide itself changes; see the mount effect. */
+const GUIDE_KEY = "cascade_guide_v2";
+
 /** Pick one, watch it run, understand it, or invent your own. */
 type IncidentTab = "inbox" | "run" | "why" | "author";
 
@@ -279,7 +282,13 @@ export default function CascadeApp() {
 
     // Act progress is derived from the world, so the only thing worth
     // persisting is whether the guide was dismissed.
-    const saved = localStorage.getItem("cascade_onboarding");
+    //
+    // The key carries a version. The guide used to be a three-button tour and
+    // is now the act spine, and anyone who dismissed the old one would
+    // otherwise never see the new one — including a judge who opened the link
+    // before it changed. A returning visitor gets the replacement once,
+    // and their dismissal of *that* sticks.
+    const saved = localStorage.getItem(GUIDE_KEY);
     if (saved) {
       try {
         if (JSON.parse(saved).dismissed) setTourVisible(false);
@@ -294,10 +303,7 @@ export default function CascadeApp() {
   }, [refreshAll, fetchMetrics, fetchPlaybooks, fetchRules, fetchApprovals, fetchInsights]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "cascade_onboarding",
-      JSON.stringify({ dismissed: !tourVisible })
-    );
+    localStorage.setItem(GUIDE_KEY, JSON.stringify({ dismissed: !tourVisible }));
   }, [tourVisible]);
 
   useEffect(() => {

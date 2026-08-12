@@ -15,7 +15,10 @@ import styles from "./Tutorial.module.css";
  * layout moves, and they explain where things are rather than why they matter.
  */
 
-const STORAGE_KEY = "cascade_tutorial_seen";
+// Versioned: the screens now cover the Why and Author tabs, which did not
+// exist when the first version was written. Someone who dismissed the old
+// introduction should be shown the new one once rather than never.
+const STORAGE_KEY = "cascade_tutorial_seen_v2";
 
 interface Slide {
   title: string;
@@ -95,9 +98,10 @@ const SLIDES: Slide[] = [
     body: (
       <>
         <p>
-          The tour strip at the top runs the three-step sequence: learn on one
-          incident, reuse on a second, then change the policy they both depend on
-          and watch the runbook go stale.
+          The strip at the top tracks a three-act story: teach it on one
+          incident, watch it reuse that on a second, then change the policy they
+          both depend on and watch the runbook get quarantined. It tells you
+          what to do at each step.
         </p>
         <p>
           Press <kbd>Ctrl</kbd>
