@@ -15,7 +15,8 @@ import { IntelligencePanel } from "../components/IntelligencePanel";
 import { DecisionPanel } from "../components/DecisionPanel";
 import { IncidentComposer } from "../components/IncidentComposer";
 import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
-import { DecisionMap, buildMapModel } from "../components/DecisionMap";
+import { buildMapModel } from "../components/DecisionMap";
+import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
 import { narrateState } from "../components/narrate";
 import { ActSpine, deriveAct } from "../components/ActSpine";
@@ -93,6 +94,7 @@ export default function CascadeApp() {
   const [activeIncident, setActiveIncident] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
   const [relearningId, setRelearningId] = useState<string | null>(null);
+  const [progressDismissed, setProgressDismissed] = useState(false);
   /** Act progression is derived from what actually happened, never stored. */
   const [guidedRunHappened, setGuidedRunHappened] = useState(false);
   const [policyChanged, setPolicyChanged] = useState(false);
@@ -465,6 +467,9 @@ export default function CascadeApp() {
       // streaming hides the thing the user just asked for.
       setIncidentTab("run");
       setExplanation(null);
+      // Closing the progress window should not silence the *next* run — the
+      // user just asked for that one.
+      setProgressDismissed(false);
       // Keep the command box showing the run in progress. Launching from a
       // card left the previous incident's text sitting there, which reads as
       // though the wrong thing is running.
@@ -952,30 +957,6 @@ export default function CascadeApp() {
                       className={styles.tabPanel}
                       style={{ display: incidentTab === "run" ? "flex" : "none" }}
                     >
-                      <DecisionMap
-                        model={buildMapModel({
-                          incident: activeIncident,
-                          running: consoleRunning,
-                          mode: consoleMode,
-                          playbookName: activePlaybookName,
-                          playbookVersion: activePlaybookVersion,
-                          explanation,
-                        })}
-                      />
-
-                      {/* One sentence, in the agent's voice. The cheapest
-                          possible answer to "what is it doing right now". */}
-                      {(() => {
-                        const line = narrateState({
-                          running: consoleRunning,
-                          mode: consoleMode,
-                          playbookName: activePlaybookName,
-                          outcome: explanation?.result,
-                          refusal: explanation?.decision?.reason ?? null,
-                        });
-                        return line ? <div className={styles.narrator}>{line}</div> : null;
-                      })()}
-
                       <IncidentConsole
                         initialInput={consoleInput}
                         isRunning={consoleRunning}
@@ -1105,6 +1086,28 @@ export default function CascadeApp() {
         commands={commands}
         onClose={() => setPaletteOpen(false)}
       />
+
+      {activeIncident && !progressDismissed && (
+        <RunProgress
+          running={consoleRunning}
+          onDismiss={() => setProgressDismissed(true)}
+          model={buildMapModel({
+            incident: activeIncident,
+            running: consoleRunning,
+            mode: consoleMode,
+            playbookName: activePlaybookName,
+            playbookVersion: activePlaybookVersion,
+            explanation,
+          })}
+          narration={narrateState({
+            running: consoleRunning,
+            mode: consoleMode,
+            playbookName: activePlaybookName,
+            outcome: explanation?.result,
+            refusal: explanation?.decision?.reason ?? null,
+          })}
+        />
+      )}
 
       {tutorialOpen && <Tutorial onClose={() => setTutorialOpen(false)} />}
 

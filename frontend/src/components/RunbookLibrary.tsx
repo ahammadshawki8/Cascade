@@ -70,6 +70,11 @@ export function RunbookLibrary({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  /** Runbooks that a newer version already replaces. */
+  const supersededBy = new Set(
+    playbooks.map((p) => p.supersedes).filter((id): id is string => Boolean(id))
+  );
+
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   };
@@ -186,7 +191,13 @@ export function RunbookLibrary({
                 </div>
               )}
 
+              {/* A runbook that already has a successor has been re-learned;
+                  offering Re-learn again reads as the last one having failed.
+                  A rejected re-learn leaves no successor, so the button
+                  correctly stays put in exactly the case where it is still the
+                  right action. */}
               {relearningId !== pb.playbook_id &&
+                !supersededBy.has(pb.playbook_id) &&
                 (pb.status_cache === "suspect" || pb.status_cache === "invalidated") &&
                 onRelearn && (
                   <div className={styles.quarantine}>

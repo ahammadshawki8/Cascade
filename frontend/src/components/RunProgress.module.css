@@ -1,0 +1,168 @@
+/* Liquid glass: a translucent pane that samples the app behind it.
+   The blur does the work; the two borders sell it. A bright hairline along the
+   top edge reads as light catching a bevel, and a darker outer border keeps it
+   legible against the near-black background, which pure translucency would
+   otherwise let it dissolve into. */
+
+.window {
+  position: fixed;
+  left: 50%;
+  bottom: 42px;
+  transform: translateX(-50%);
+  z-index: 120;
+  width: min(820px, calc(100vw - 96px));
+
+  background: linear-gradient(
+    180deg,
+    rgba(38, 46, 52, 0.72) 0%,
+    rgba(20, 24, 27, 0.78) 100%
+  );
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 2px 10px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+  animation: rise 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateX(-50%) translateY(14px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-ibm-plex-mono), monospace;
+}
+
+.stage {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.spacer { flex: 1; }
+
+.iconBtn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.iconBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.13);
+  color: var(--text);
+}
+
+.iconBtn:disabled { opacity: 0.35; cursor: default; }
+
+/* The map paints its own chrome for the tab layout; inside glass it has to be
+   transparent or the effect is covered by a solid rectangle. */
+.window :global(svg) { background: transparent; }
+
+.window > div:nth-child(2) {
+  background: transparent !important;
+  border-bottom: none !important;
+}
+
+.narration {
+  padding: 10px 14px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* --- minimised ----------------------------------------------------------- */
+
+.pill {
+  position: fixed;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  z-index: 120;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+
+  background: linear-gradient(
+    180deg,
+    rgba(38, 46, 52, 0.74) 0%,
+    rgba(20, 24, 27, 0.8) 100%
+  );
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  color: var(--text);
+  cursor: pointer;
+  animation: rise 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pill:hover { border-color: rgba(255, 255, 255, 0.2); }
+
+.pillIncident {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pillStage {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+/* --- the running indicator ----------------------------------------------- */
+
+.pulse {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.pulseOn {
+  color: var(--accent);
+  animation: beat 1.4s ease-in-out infinite;
+}
+
+@keyframes beat {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window, .pill { animation: none; }
+  .pulseOn { animation: none; }
+}
+
+/* Blur is expensive and unsupported in a few engines; without it the panel
+   must still be readable, so fall back to an opaque surface. */
+@supports not (backdrop-filter: blur(2px)) {
+  .window, .pill { background: var(--surface-raised); }
+}
