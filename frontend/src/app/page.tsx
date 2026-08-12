@@ -602,16 +602,30 @@ export default function CascadeApp() {
     setRelearningId(playbookId);
     // Done when a successor exists, not when the request returned: the worker
     // has to re-solve the incident before there is anything new to show.
+    let successor;
     for (let i = 0; i < 45; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       await fetchPlaybooks();
-      const successor = playbooksRef.current.find((p) => p.supersedes === playbookId);
+      successor = playbooksRef.current.find((p) => p.supersedes === playbookId);
       if (successor) {
         setToast(`Re-learned as ${successor.name} v${successor.version}.`);
         break;
       }
     }
     setRelearningId(null);
+
+    // A re-learn can legitimately produce nothing. If the incident now
+    // escalates, the run short-circuits before consulting policy, so there are
+    // no rule citations to corroborate and the compiler refuses to store a
+    // runbook whose provenance it cannot verify. That is the right call, but
+    // it used to be completely silent — the spinner stopped and the runbook
+    // was still quarantined, which reads as the feature being broken.
+    if (!successor) {
+      setToast(
+        "Re-learn produced no new version: the incident now escalates, so " +
+          "there was no grounded policy citation to compile against."
+      );
+    }
     refreshAll();
   };
 
