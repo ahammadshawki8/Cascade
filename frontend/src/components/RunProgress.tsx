@@ -17,6 +17,19 @@ import styles from "./RunProgress.module.css";
  * the run never becomes invisible; it only becomes small.
  */
 
+/**
+ * Applied inline, not from the stylesheet.
+ *
+ * lightningcss strips `backdrop-filter` from these rules during production
+ * minification — the compiled `.window` rule keeps the gradient, border,
+ * radius and shadows, and silently loses the one property the glass effect
+ * depends on. It only shows up in a production build, so the effect worked
+ * locally and was flat once deployed. An inline style never reaches the
+ * minifier. Browsers without support ignore it and fall back to the gradient,
+ * which is opaque enough to stay readable on its own.
+ */
+const GLASS = "blur(22px) saturate(180%)";
+
 const STAGE_LABEL: Record<Stage, string> = {
   search: "Searching memory",
   freshness: "Checking the runbook is still valid",
@@ -61,6 +74,7 @@ export function RunProgress({
     return (
       <button
         className={styles.pill}
+        style={{ backdropFilter: GLASS, WebkitBackdropFilter: GLASS }}
         onClick={() => setMinimized(false)}
         aria-label="Show run progress"
       >
@@ -74,7 +88,12 @@ export function RunProgress({
   }
 
   return (
-    <div className={styles.window} role="dialog" aria-label="Run progress">
+    <div
+      className={styles.window}
+      style={{ backdropFilter: GLASS, WebkitBackdropFilter: GLASS }}
+      role="dialog"
+      aria-label="Run progress"
+    >
       <div className={styles.header}>
         <span className={`${styles.pulse} ${running ? styles.pulseOn : ""}`}>
           <Activity size={13} />
