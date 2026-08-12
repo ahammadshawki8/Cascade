@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -31,8 +30,6 @@ from .models import PlaybookCandidate
 from .tools import SIDE_EFFECTING, TOOL_DEFINITIONS, TOOL_MAP, get_rules
 
 log = logging.getLogger(__name__)
-
-_INCIDENT_RE = re.compile(r"INC-\d+", re.IGNORECASE)
 
 
 async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
@@ -896,8 +893,19 @@ def _outcome_for(status: str) -> str:
 
 
 def _incident_from(task_text: str) -> str | None:
-    match = _INCIDENT_RE.search(task_text)
-    return match.group(0).upper() if match else None
+    """Which incident this request is about, however the operator wrote it.
+
+    Shares retrieval's canonicaliser rather than keeping a second, stricter
+    pattern. They had drifted: retrieval accepted "inc 1009" while this
+    required the hyphen, so a loosely typed request would match a runbook and
+    then fail its own preconditions — the incident came back empty, so
+    "incident kind is 'bad_deploy'" could not be evaluated and was reported as
+    unmet. The run looked like a principled refusal and was really a parsing
+    difference between two regexes.
+    """
+    from .retrieval import canonical_incident_id
+
+    return canonical_incident_id(task_text)
 
 
 async def _publish(sse_bus, topic: str, data: dict[str, Any]) -> None:

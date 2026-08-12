@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -28,8 +27,6 @@ from app.core.models import Task, TaskStatus
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-_INCIDENT_RE = re.compile(r"INC-\d+", re.IGNORECASE)
 
 
 def _stub_mode() -> bool:
@@ -278,9 +275,11 @@ async def explain_task(task_id: UUID):
             (str(pb_id),),
         )
 
+    from app.core.retrieval import canonical_incident_id
+
     incident = None
-    match = _INCIDENT_RE.search(task["input"] or "")
-    if match:
+    incident_id = canonical_incident_id(task["input"] or "")
+    if incident_id:
         incident = await one(
             """
             SELECT incident_id, kind, severity, service_name, service_tier,
@@ -288,7 +287,7 @@ async def explain_task(task_id: UUID):
                    EXTRACT(EPOCH FROM (now() - deploy_timestamp)) / 3600 AS deploy_age_hours
             FROM mock_incidents WHERE incident_id = %s
             """,
-            (match.group(0).upper(),),
+            (incident_id,),
         )
 
     # The comparison is what makes the cost legible: a guided run is only

@@ -17,6 +17,7 @@ ranking are identical. The index is built for L2, therefore every query uses
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -35,6 +36,78 @@ def _thresholds() -> tuple[float, float]:
     return settings.retrieval_l2_threshold, settings.dedup_l2_threshold
 
 
+_INCIDENT_RE = re.compile(r"\binc[\s\-_]*\d+\b", re.IGNORECASE)
+
+
+def normalize_for_embedding(text: str, kind: str | None = None) -> str:
+    """The text a runbook is indexed by, on both sides of the comparison.
+
+    Two problems, and fixing only the first creates a worse third.
+
+    The incident id is a *parameter*, not meaning: "Remediate INC-1001" and
+    "Remediate INC-1004" are the same request about different rows. Embedding
+    the digits put those roughly 0.59 apart in L2, which fell between the two
+    thresholds and broke both at once:
+
+        0.4 ...... dedup ...... 0.59 ...... 0.85 ...... retrieval
+
+    Above dedup, so every cold run on a new id saved another identical runbook
+    and the library filled with clones. Below retrieval, so reuse still worked
+    and the duplication stayed silent. It also made retrieval sensitive to
+    *typing*: "inc 1001" landed 0.91 away and missed reuse entirely. The id
+    pattern is loose about separators for exactly that reason — a human writing
+    "inc 1001" means "INC-1001", and only the embedding ever disagreed.
+
+    But stripping the id alone over-corrects. Every request is the word
+    "remediate" and an id, so with the id gone a bad deploy and an error spike
+    embed *identically* — dedup then merges two genuinely different procedures
+    and the system can only ever learn one runbook. The id had been carrying
+    the incident kind by accident, and removing it removed the only signal that
+    told them apart. The integration suite caught this immediately: the tests
+    that need a specific runbook to exist started finding one compiled from a
+    different kind of incident.
+
+    So the kind travels explicitly. Callers resolve it from the incident row
+    (retrieval) or from the trajectory that produced the runbook (compile), and
+    both arrive at the same key.
+
+    Thresholds are deliberately unchanged: matching requests now sit at ~0, so
+    both gates have room to spare, and retuning a threshold while changing what
+    it measures would make any regression impossible to attribute.
+    """
+    base = _INCIDENT_RE.sub("{incident}", text or "").strip().lower()
+    return f"{base} [{kind}]" if kind else base
+
+
+def canonical_incident_id(text: str) -> str | None:
+    """`inc 1001` and `INC-1001` name the same row; return the canonical form."""
+    match = _INCIDENT_RE.search(text or "")
+    if not match:
+        return None
+    digits = re.sub(r"\D", "", match.group(0))
+    return f"INC-{digits}" if digits else None
+
+
+async def incident_kind(task_text: str, db) -> str | None:
+    """The kind of incident this request is about, if it names a known one.
+
+    Retrieval runs before the agent has read anything, so the kind has to come
+    from the request itself. A request naming no known incident returns None
+    and is indexed on its wording alone, which is the honest fallback.
+    """
+    incident_id = canonical_incident_id(task_text)
+    if not incident_id:
+        return None
+    try:
+        rows = await db.q(
+            "SELECT kind FROM mock_incidents WHERE incident_id = %s", (incident_id,)
+        )
+    except Exception as exc:
+        log.warning("could not resolve incident kind for %s: %s", incident_id, exc)
+        return None
+    return str(rows[0]["kind"]) if rows else None
+
+
 def to_vector_literal(embedding: list[float]) -> str:
     """Render a Python list as a pgvector literal.
 
@@ -51,7 +124,8 @@ async def retrieve(task_text: str, db, embed_client=None) -> PlaybookCandidate |
 
         embed_client = EmbedClient()
 
-    embedding = await embed_client.embed(task_text)
+    kind = await incident_kind(task_text, db)
+    embedding = await embed_client.embed(normalize_for_embedding(task_text, kind))
     candidates = await _phase1_ann_query(embedding, db, limit=20)
     if not candidates:
         return None

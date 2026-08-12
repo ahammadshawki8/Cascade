@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 
 from .confidence import INITIAL_CONFIDENCE
 from .models import PlaybookSpec, RuleCitation, Step
-from .retrieval import dedup_check, to_vector_literal
+from .retrieval import dedup_check, normalize_for_embedding, to_vector_literal
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,16 @@ async def compile_playbook(
     # shares the same precondition boilerplate, it also made genuinely
     # different runbooks look alike. The goal stays out of the vector and is
     # what the precondition check reads instead.
-    embedding_text = (task_text or spec.goal).strip()
+    # Normalised identically to the query side. These two calls are the only
+    # places a vector enters this space, and if they ever disagree retrieval
+    # silently degrades rather than failing, so they share one function.
+    #
+    # The kind comes from the trajectory rather than a second database read:
+    # this run already fetched the incident, and using what it actually saw
+    # keeps the runbook indexed by the situation it was genuinely learned from.
+    learned_from = _first_output(trajectory, "get_incident") or {}
+    kind = str(learned_from.get("kind")) if learned_from.get("kind") else None
+    embedding_text = normalize_for_embedding(task_text or spec.goal, kind)
     embedding = await embed_client.embed(embedding_text)
 
     if not supersedes:
