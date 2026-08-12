@@ -80,6 +80,9 @@ async def compile_playbook(
     if violations:
         raise CompilationRejected("; ".join(violations))
 
+    if supersedes:
+        await _assert_provenance_not_weaker(supersedes, deps, db)
+
     name = _derive_name(spec, trajectory)
     domain = "incident"
 
@@ -357,6 +360,42 @@ def _safety_lint(spec: PlaybookSpec) -> list[str]:
 # ---------------------------------------------------------------------------
 # Persistence
 # ---------------------------------------------------------------------------
+
+
+async def _assert_provenance_not_weaker(
+    supersedes: UUID, deps: list[tuple[str, int, str, float]], db
+) -> None:
+    """A replacement must depend on at least what it replaces.
+
+    Re-learning re-solves the incident and compiles the result, and the new
+    provenance is whatever that run could corroborate. When the re-solve takes
+    a shorter path — escalating, say, instead of rolling back — it never reads
+    the rules the original consulted, so the successor is grounded on fewer of
+    them and every dropped rule is one that can no longer invalidate it.
+
+    Observed: a v2 compiled from an escalation cited only auto_remediate_tier
+    and notify, where v1 had cited rollback_window too. That v2 would survive a
+    rollback_window change untouched — the runbook would look healthy while
+    resting on policy nobody had checked. Silently trading away the ability to
+    go stale is the one regression this system must not ship, since going stale
+    correctly is the entire point.
+
+    Rejecting leaves the predecessor quarantined and visibly un-relearned,
+    which is the honest state: nothing was proven, so nothing is trusted.
+    """
+    rows = await db.q(
+        "SELECT rule_key FROM playbook_deps WHERE playbook_id = %s", (str(supersedes),)
+    )
+    previous = {r["rule_key"] for r in rows}
+    proposed = {d[0] for d in deps}
+    lost = previous - proposed
+    if lost:
+        raise CompilationRejected(
+            "provenance weaker than the version it replaces: "
+            f"{', '.join(sorted(lost))} no longer corroborated. The re-solved "
+            "run did not consult these rules, so the replacement could not be "
+            "invalidated by them."
+        )
 
 
 async def _insert_playbook(

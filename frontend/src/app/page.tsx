@@ -633,8 +633,9 @@ export default function CascadeApp() {
     // was still quarantined, which reads as the feature being broken.
     if (!successor) {
       setToast(
-        "Re-learn produced no new version: the incident now escalates, so " +
-          "there was no grounded policy citation to compile against."
+        "Re-learn produced no new version: the re-solved run did not consult " +
+          "enough policy to ground a replacement at least as well as the " +
+          "current one. The runbook stays quarantined."
       );
     }
     refreshAll();
