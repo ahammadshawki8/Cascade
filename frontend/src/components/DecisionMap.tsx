@@ -451,8 +451,9 @@ function Node({
         </text>
       )}
 
+      {/* Clear of the lane's lower border, which the label used to sit on. */}
       {badge && (
-        <text x={n.x + n.w / 2} y={n.y + NODE_H + 15} className={styles.badge}>
+        <text x={n.x + n.w / 2} y={n.y + NODE_H + 28} className={styles.badge}>
           {badge}
         </text>
       )}

@@ -461,6 +461,10 @@ export default function CascadeApp() {
       // streaming hides the thing the user just asked for.
       setIncidentTab("run");
       setExplanation(null);
+      // Keep the command box showing the run in progress. Launching from a
+      // card left the previous incident's text sitting there, which reads as
+      // though the wrong thing is running.
+      setConsoleInput(input);
       setActiveIncident((input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase() ?? input);
       setConsoleRunning(true);
       setConsoleSteps([]);
