@@ -81,6 +81,23 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
                 task_id, task_text, db, sse_bus, interrupt_bus
             )
 
+        # `_guided_mode` falls back to explore on a precondition miss, records
+        # that on the task row, and runs the cold path — but this local `mode`
+        # still said "guided". Two things followed, both silent:
+        #
+        #   the episode was written as guided while having paid full planning
+        #   cost, which dragged cold-path latency and tokens into the guided
+        #   average and understated the very speedup the project claims; and
+        #
+        #   the compile below is gated on mode == "explore", so those runs
+        #   never became runbooks. An incident kind whose first encounter was a
+        #   precondition miss could never be learned at all.
+        #
+        # The row is authoritative because the fallback wrote it.
+        rows = await db.q("SELECT mode FROM tasks WHERE task_id = %s", (str(task_id),))
+        if rows and rows[0]["mode"]:
+            mode = rows[0]["mode"]
+
         # Parked awaiting a human: leave the row in `awaiting_approval` and
         # write nothing terminal. No episode either — the run has not finished,
         # and a half-run recorded as an episode would skew every metric.

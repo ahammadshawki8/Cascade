@@ -6,7 +6,6 @@ import { ActivityBar, ViewId, VIEWS } from "../components/ActivityBar";
 import { StatusBar } from "../components/StatusBar";
 import { CommandPalette, Command } from "../components/CommandPalette";
 import { MetricBar } from "../components/MetricBar";
-import { OnboardingRail, StepState } from "../components/OnboardingRail";
 import { IncidentConsole, StepEvent, TaskHistoryItem } from "../components/IncidentConsole";
 import { RunbookLibrary, Playbook } from "../components/RunbookLibrary";
 import { PolicyPanel, Rule, ImpactResult } from "../components/PolicyPanel";
@@ -19,6 +18,7 @@ import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { DecisionMap, buildMapModel } from "../components/DecisionMap";
 import { IncidentInbox } from "../components/IncidentInbox";
 import { narrateState } from "../components/narrate";
+import { ActSpine, deriveAct } from "../components/ActSpine";
 
 const API_ROOT = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -89,6 +89,9 @@ export default function CascadeApp() {
   const [explanation, setExplanation] = useState<any>(null);
   const [activeIncident, setActiveIncident] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
+  /** Act progression is derived from what actually happened, never stored. */
+  const [guidedRunHappened, setGuidedRunHappened] = useState(false);
+  const [policyChanged, setPolicyChanged] = useState(false);
 
   const [metrics, setMetrics] = useState<any>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
@@ -110,9 +113,6 @@ export default function CascadeApp() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
 
-  const [step1State, setStep1State] = useState<StepState>("available");
-  const [step2State, setStep2State] = useState<StepState>("locked");
-  const [step3State, setStep3State] = useState<StepState>("locked");
   const [highlightRule, setHighlightRule] = useState<string | undefined>();
   const [prefillParams, setPrefillParams] = useState<Record<string, any> | undefined>();
 
@@ -274,14 +274,12 @@ export default function CascadeApp() {
     // rather than the modal being the first thing that renders.
     if (!tutorialSeen()) setTutorialOpen(true);
 
+    // Act progress is derived from the world, so the only thing worth
+    // persisting is whether the guide was dismissed.
     const saved = localStorage.getItem("cascade_onboarding");
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        setStep1State(parsed.step1);
-        setStep2State(parsed.step2);
-        setStep3State(parsed.step3);
-        if (parsed.dismissed) setTourVisible(false);
+        if (JSON.parse(saved).dismissed) setTourVisible(false);
       } catch {}
     }
 
@@ -295,14 +293,9 @@ export default function CascadeApp() {
   useEffect(() => {
     localStorage.setItem(
       "cascade_onboarding",
-      JSON.stringify({
-        step1: step1State,
-        step2: step2State,
-        step3: step3State,
-        dismissed: !tourVisible,
-      })
+      JSON.stringify({ dismissed: !tourVisible })
     );
-  }, [step1State, step2State, step3State, tourVisible]);
+  }, [tourVisible]);
 
   useEffect(() => {
     if (!toast) return;
@@ -363,6 +356,8 @@ export default function CascadeApp() {
       }
 
       const reason = data?.decision?.reason;
+      if (reason === "reused") setGuidedRunHappened(true);
+
       if (reason === "refused_stale") {
         setToast("A matching runbook was refused: policy moved since it was compiled.");
         setIncidentTab("why");
@@ -496,68 +491,7 @@ export default function CascadeApp() {
     [attachTaskListeners]
   );
 
-  /** Resolve once the task reaches a terminal state, so the tour can advance. */
-  const runAndWait = useCallback(
-    async (input: string) => {
-      const taskId = await handleTaskSubmit(input);
-      if (!taskId) return;
-
-      for (let attempt = 0; attempt < 60; attempt++) {
-        await new Promise((r) => setTimeout(r, 500));
-        try {
-          const res = await fetch(`${API_BASE}/tasks/${taskId}`);
-          if (!res.ok) continue;
-          const task = await res.json();
-          if (
-            ["succeeded", "failed", "interrupted", "awaiting_approval"].includes(
-              task.status
-            )
-          ) {
-            setConsoleRunning(false);
-            // The SSE handler covers the normal path, but a tour-driven run
-            // polls to completion and must land on the same explanation.
-            setLastTaskId(taskId);
-            void announceDecision(taskId);
-            refreshAll();
-            return;
-          }
-        } catch {}
-      }
-      setConsoleRunning(false);
-    },
-    [handleTaskSubmit, refreshAll, announceDecision]
-  );
-
   // ------------------------------------------------------------------ actions
-
-  const handleStep1Click = async () => {
-    setConsoleInput("Remediate INC-1001");
-    setStep1State("running");
-    await runAndWait("Remediate INC-1001");
-    // The playbook is compiled by the worker after the task finishes.
-    await new Promise((r) => setTimeout(r, 3000));
-    await fetchPlaybooks();
-    setStep1State("done");
-    setStep2State("available");
-  };
-
-  const handleStep2Click = async () => {
-    setConsoleInput("Remediate INC-1002");
-    setStep2State("running");
-    await runAndWait("Remediate INC-1002");
-    setStep2State("done");
-    setStep3State("available");
-  };
-
-  const handleStep3Click = () => {
-    setStep3State("running");
-    setView("policy");
-    setHighlightRule("incident.rollback_window");
-    setTimeout(() => {
-      setStep3State("done");
-      setHighlightRule(undefined);
-    }, 3000);
-  };
 
   const handleResetDemo = async () => {
     try {
@@ -567,9 +501,6 @@ export default function CascadeApp() {
       setToast("Reset failed — is the API running?");
     }
     detachTaskListeners();
-    setStep1State("available");
-    setStep2State("locked");
-    setStep3State("locked");
     setConsoleInput("");
     setConsoleSteps([]);
     setTaskHistory([]);
@@ -581,6 +512,10 @@ export default function CascadeApp() {
     setInsights([]);
     setCopilotAnswer(null);
     setTourVisible(true);
+    setGuidedRunHappened(false);
+    setPolicyChanged(false);
+    setExplanation(null);
+    setActiveIncident(null);
     refreshAll();
   };
 
@@ -617,6 +552,7 @@ export default function CascadeApp() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: rule.body, params }),
     });
+    setPolicyChanged(true);
     setToast(`${ruleKey} updated — dependent runbooks are being re-checked.`);
     refreshAll();
     // The worker demotes status_cache and queues relearns just after commit.
@@ -902,19 +838,21 @@ export default function CascadeApp() {
 
         {tourVisible && (
           <div className={styles.tour}>
-            <OnboardingRail
-              step1State={step1State}
-              step2State={step2State}
-              step3State={step3State}
-              onStep1Click={handleStep1Click}
-              onStep2Click={handleStep2Click}
-              onStep3Click={handleStep3Click}
-              onReset={handleResetDemo}
+            <ActSpine
+              state={deriveAct({
+                runbookCount: playbooks.length,
+                guidedRunHappened,
+                policyChanged,
+              })}
+              onGoToPolicy={() => {
+                setHighlightRule("incident.rollback_window");
+                setView("policy");
+              }}
             />
             <button
               className={styles.tourDismiss}
               onClick={() => setTourVisible(false)}
-              aria-label="Hide guided tour"
+              aria-label="Hide the guide"
             >
               hide
             </button>

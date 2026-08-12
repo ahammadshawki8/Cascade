@@ -20,6 +20,47 @@ const KINDS = [
   { value: "resource_exhaustion", label: "Resource exhaustion", hint: "scaling path" },
 ];
 
+/**
+ * Start from an intent, not from a blank form.
+ *
+ * Complete freedom over six fields is freedom to build something that proves
+ * nothing — a combination outside the demo's decision space, where the outcome
+ * is uninteresting and looks like a bug. Each preset is a question worth
+ * asking, and every one of them lands on a different gate. Custom stays right
+ * there for anyone who wants it.
+ */
+const PRESETS: {
+  id: string;
+  question: string;
+  because: string;
+  values: { kind: string; severity: string; service_tier: number; deploy_age_hours: number };
+}[] = [
+  {
+    id: "allowed",
+    question: "A fix it should allow",
+    because: "recent deploy on a tier policy permits, so expect a rollback",
+    values: { kind: "bad_deploy", severity: "P2", service_tier: 2, deploy_age_hours: 2 },
+  },
+  {
+    id: "tier",
+    question: "A fix policy forbids",
+    because: "tier 1 is too critical to touch automatically, so expect an escalation",
+    values: { kind: "bad_deploy", severity: "P1", service_tier: 1, deploy_age_hours: 2 },
+  },
+  {
+    id: "window",
+    question: "Too old to roll back",
+    because: "past the rollback window, so rollback must be refused",
+    values: { kind: "bad_deploy", severity: "P2", service_tier: 2, deploy_age_hours: 30 },
+  },
+  {
+    id: "other",
+    question: "A different kind of failure",
+    because: "no deploy to undo, so it has to find another way",
+    values: { kind: "error_spike", severity: "P2", service_tier: 2, deploy_age_hours: 0 },
+  },
+];
+
 interface Authored {
   incident_id: string;
   expect: string;
@@ -40,6 +81,19 @@ export function IncidentComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authored, setAuthored] = useState<Authored | null>(null);
+  const [preset, setPreset] = useState<string | null>(null);
+  const [showFields, setShowFields] = useState(false);
+
+  const applyPreset = (id: string) => {
+    const p = PRESETS.find((x) => x.id === id);
+    if (!p) return;
+    setPreset(id);
+    setAuthored(null);
+    setKind(p.values.kind);
+    setSeverity(p.values.severity);
+    setTier(p.values.service_tier);
+    setDeployAge(p.values.deploy_age_hours);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +137,39 @@ export function IncidentComposer({
         </div>
       </div>
 
-      <form className={styles.form} onSubmit={submit}>
+      <div className={styles.presets}>
+        <div className={styles.presetsTitle}>What do you want to test?</div>
+        {PRESETS.map((p) => (
+          <button
+            key={p.id}
+            className={`${styles.preset} ${preset === p.id ? styles.presetOn : ""}`}
+            onClick={() => applyPreset(p.id)}
+          >
+            <span className={styles.presetQ}>{p.question}</span>
+            <span className={styles.presetWhy}>{p.because}</span>
+          </button>
+        ))}
+        <button
+          className={styles.presetToggle}
+          onClick={() => setShowFields((v) => !v)}
+          aria-expanded={showFields}
+        >
+          {showFields ? "Hide the fields" : "Custom — set the fields yourself"}
+        </button>
+      </div>
+
+      <form
+        className={styles.form}
+        onSubmit={submit}
+        style={{ display: showFields || preset ? "flex" : "none" }}
+      >
+        {/* A preset already answers all six of these. Showing them anyway is
+            the clutter the presets exist to remove, so they stay collapsed
+            until someone actually wants to change something. */}
+        <div
+          className={styles.fields}
+          style={{ display: showFields ? "flex" : "none" }}
+        >
         <label className={styles.field}>
           <span className={styles.label}>What happened</span>
           <select className={styles.select} value={kind} onChange={(e) => setKind(e.target.value)}>
@@ -154,6 +240,15 @@ export function IncidentComposer({
             rollback should be refused
           </span>
         </label>
+
+        </div>
+
+        {preset && !showFields && (
+          <div className={styles.summary}>
+            {KINDS.find((k) => k.value === kind)?.label} on a tier {tier} service,
+            {kind === "bad_deploy" ? ` deployed ${deployAge}h ago` : " no deploy involved"}
+          </div>
+        )}
 
         <button type="submit" className={styles.create} disabled={busy}>
           <Plus size={14} />

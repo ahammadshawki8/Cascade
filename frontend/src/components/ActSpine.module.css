@@ -1,0 +1,115 @@
+.spine {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 10px 16px;
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dot {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+  background-color: var(--raised);
+  flex-shrink: 0;
+  transition: all 200ms ease-out;
+}
+
+.dotActive {
+  border-color: var(--accent);
+  color: var(--bg);
+  background-color: var(--accent);
+}
+
+.dotDone {
+  border-color: var(--st-active);
+  color: var(--st-active);
+  background-color: transparent;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.labelActive {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.labelDone {
+  color: var(--text-dim);
+}
+
+.rail {
+  width: 34px;
+  height: 1px;
+  margin: 0 12px;
+  background-color: var(--border-strong);
+}
+
+.railDone {
+  background-color: var(--st-active);
+}
+
+/* The copy carries the meaning; the track is only a position indicator. */
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.goal {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.next {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.jump {
+  background: none;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+
+.jump:hover {
+  background-color: var(--accent-soft);
+}
+
+@media (max-width: 1100px) {
+  .spine { gap: 16px; }
+  .rail { width: 18px; margin: 0 8px; }
+}

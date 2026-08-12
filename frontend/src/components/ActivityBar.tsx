@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import styles from "./ActivityBar.module.css";
 import { Logo } from "./Logo";
 import {
@@ -12,6 +13,7 @@ import {
   RotateCcw,
   Command,
   BookMarked,
+  MoreHorizontal,
 } from "lucide-react";
 
 export type ViewId =
@@ -38,6 +40,18 @@ export const VIEWS: Item[] = [
   { id: "approvals", label: "Approvals", hint: "Actions awaiting a human", icon: ShieldCheck },
 ];
 
+/**
+ * Only these three carry the story: teach it, watch it reuse, change the rules.
+ *
+ * Six equally-weighted destinations meant a first-time viewer had to choose
+ * before knowing what any of them were, and the three that explain the project
+ * were outnumbered by three that assume you already understand it. The rest
+ * stay reachable behind "More" — and Approvals promotes itself the moment
+ * something is actually waiting, because then it is the most important thing
+ * on screen.
+ */
+const PRIMARY: ViewId[] = ["incidents", "runbooks", "policy"];
+
 interface Props {
   active: ViewId;
   onSelect: (id: ViewId) => void;
@@ -61,6 +75,18 @@ export function ActivityBar({
   onReset,
   onCommandPalette,
 }: Props) {
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // A view stays on the rail while it is the active one, so selecting from
+  // "More" never makes the thing you are looking at disappear from the nav.
+  // Approvals joins them whenever something is genuinely waiting.
+  const promoted = new Set<ViewId>(PRIMARY);
+  promoted.add(active);
+  if ((badges.approvals ?? 0) > 0) promoted.add("approvals");
+
+  const visible = VIEWS.filter((v) => promoted.has(v.id));
+  const secondary = VIEWS.filter((v) => !promoted.has(v.id));
+
   return (
     <nav className={styles.bar} aria-label="Primary">
       <div className={styles.brand} title="Cascade">
@@ -68,7 +94,7 @@ export function ActivityBar({
       </div>
 
       <div className={styles.group}>
-        {VIEWS.map((item) => {
+        {visible.map((item) => {
           const Icon = item.icon;
           const count = badges[item.id] ?? 0;
           const isActive = active === item.id;
@@ -90,6 +116,46 @@ export function ActivityBar({
             </button>
           );
         })}
+
+        {/* The secondary views, one keypress away rather than one glance. */}
+        <button
+          type="button"
+          className={`${styles.item} ${moreOpen ? styles.itemActive : ""}`}
+          onClick={() => setMoreOpen((v) => !v)}
+          aria-label="More views"
+          aria-expanded={moreOpen}
+        >
+          <MoreHorizontal size={20} strokeWidth={1.75} />
+          <span className={styles.tooltip} role="tooltip">
+            <strong>More</strong>
+            <em>Copilot, intelligence, approvals</em>
+          </span>
+        </button>
+
+        {moreOpen && (
+          <div className={styles.more}>
+            {secondary.map((item) => {
+              const Icon = item.icon;
+              const count = badges[item.id] ?? 0;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={styles.moreItem}
+                  onClick={() => {
+                    onSelect(item.id);
+                    setMoreOpen(false);
+                  }}
+                >
+                  <Icon size={15} strokeWidth={1.75} />
+                  <span className={styles.moreLabel}>{item.label}</span>
+                  <span className={styles.moreHint}>{item.hint}</span>
+                  {count > 0 && <span className={styles.moreBadge}>{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className={styles.spacer} />
