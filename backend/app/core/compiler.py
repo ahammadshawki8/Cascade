@@ -382,19 +382,41 @@ async def _assert_provenance_not_weaker(
 
     Rejecting leaves the predecessor quarantined and visibly un-relearned,
     which is the honest state: nothing was proven, so nothing is trusted.
+
+    Only rules that have *moved* are enforced, not the whole predecessor set.
+    Citations come from a model, and which rules it chooses to list varies run
+    to run: an early version of this check demanded an exact superset and
+    rejected a perfectly good v2 because that run had not listed
+    `incident.notify`, even though it did notify. Blocking a correct relearn
+    over phrasing variance is worse than the gap it closes.
+
+    A rule that has changed since the predecessor was compiled is the one that
+    caused the quarantine. If the replacement does not cite it, the relearn has
+    produced a runbook that the very change prompting it could not invalidate —
+    which is the failure this guards against.
     """
     rows = await db.q(
-        "SELECT rule_key FROM playbook_deps WHERE playbook_id = %s", (str(supersedes),)
+        """
+        SELECT d.rule_key, d.rule_version,
+               (SELECT max(version) FROM rules WHERE rule_key = d.rule_key) AS head
+        FROM playbook_deps d
+        WHERE d.playbook_id = %s
+        """,
+        (str(supersedes),),
     )
-    previous = {r["rule_key"] for r in rows}
+    moved = {
+        r["rule_key"]
+        for r in rows
+        if r["head"] is not None and r["rule_version"] < r["head"]
+    }
     proposed = {d[0] for d in deps}
-    lost = previous - proposed
+    lost = moved - proposed
     if lost:
         raise CompilationRejected(
             "provenance weaker than the version it replaces: "
-            f"{', '.join(sorted(lost))} no longer corroborated. The re-solved "
-            "run did not consult these rules, so the replacement could not be "
-            "invalidated by them."
+            f"{', '.join(sorted(lost))} changed since the original was compiled "
+            "but is not cited by the replacement, which therefore could not be "
+            "invalidated by that rule."
         )
 
 

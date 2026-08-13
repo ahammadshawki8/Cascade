@@ -359,6 +359,68 @@ def _chunks(items: list, size: int):
 _KINDS = ("bad_deploy", "error_spike", "resource_exhaustion")
 
 
+async def _make_representative_incident(
+    kind: str, min_tier: int, window_h: float, db
+) -> str:
+    """A fresh, currently-eligible incident of this kind, for re-learning.
+
+    Deliberately built to sit inside every gate: a tier policy allows, and for
+    a bad deploy a deploy timestamp at half the current rollback window, so it
+    is comfortably inside however the window has just been changed. The point
+    is to re-derive the procedure under the new rules, which requires a case
+    the new rules actually permit acting on.
+
+    Lives in its own INC-8xxx range so it never collides with the seeded world
+    or with incidents authored through /api/mock/incidents, and so it is
+    obvious in the inbox where it came from.
+    """
+    row = await db.q(
+        "SELECT count(*)::INT AS n FROM mock_incidents WHERE incident_id LIKE 'INC-8%'"
+    )
+    incident_id = f"INC-8{(row[0]['n'] if row else 0) + 1:03d}"
+    service = f"svc-relearn-t{min_tier}"
+
+    await db.q(
+        """
+        INSERT INTO mock_services (service_name, tier, description)
+        VALUES (%s, %s, 'created to re-derive a quarantined runbook')
+        ON CONFLICT (service_name) DO NOTHING
+        """,
+        (service, min_tier),
+    )
+
+    # Only a deploy-shaped incident has a deploy to roll back; leaving the
+    # timestamp NULL for the others matches how the seed models them.
+    deploy = None if kind != "bad_deploy" else max(window_h / 2.0, 0.25)
+    if deploy is None:
+        await db.q(
+            """
+            INSERT INTO mock_incidents (incident_id, kind, severity, service_name,
+                                        service_tier, state, error_rate, cpu_usage)
+            VALUES (%s, %s, 'P2', %s, %s, 'open', 12.0, 0.4)
+            """,
+            (incident_id, kind, service, min_tier),
+        )
+    else:
+        await db.q(
+            """
+            INSERT INTO mock_incidents (incident_id, kind, severity, service_name,
+                                        service_tier, deploy_timestamp, state,
+                                        error_rate, cpu_usage)
+            VALUES (%s, %s, 'P2', %s, %s,
+                    now() - (%s || ' hours')::INTERVAL, 'open', 12.0, 0.4)
+            """,
+            (incident_id, kind, service, min_tier, str(deploy)),
+        )
+
+    log.info(
+        "relearn: built %s (%s, tier %d%s) to re-derive against current policy",
+        incident_id, kind, min_tier,
+        f", deployed {deploy}h ago" if deploy is not None else "",
+    )
+    return incident_id
+
+
 async def _synthesize_task(spec: Any, db) -> str | None:
     """Build a representative request that re-exercises this playbook.
 
@@ -380,14 +442,51 @@ async def _synthesize_task(spec: Any, db) -> str | None:
     kind = next((k for k in _KINDS if k in haystack), None)
 
     if kind:
+        # Open and the right kind is not enough: it also has to be one the
+        # *current* policy permits acting on. Picking any open bad deploy could
+        # land on a 24-hour-old one while the window says 4, and the re-solve
+        # then escalates on its first check — no eligibility call, so nothing
+        # to cite, so the compile is rejected and the runbook stays quarantined
+        # forever. Re-learn could never produce a v2 that way.
+        rules = await db.q(
+            "SELECT rule_key, params FROM rules r WHERE version = "
+            "(SELECT max(version) FROM rules WHERE rule_key = r.rule_key)"
+        )
+        params = {r["rule_key"]: (r["params"] or {}) for r in rules}
+        min_tier = int(params.get("incident.auto_remediate_tier", {}).get("min_tier", 2))
+        window_h = float(params.get("incident.rollback_window", {}).get("hours", 24))
+
         rows = await db.q(
             """
             SELECT incident_id FROM mock_incidents
             WHERE state = 'open' AND kind = %s
+              AND service_tier >= %s
+              AND (deploy_timestamp IS NULL
+                   OR deploy_timestamp > now() - (%s || ' hours')::INTERVAL)
             ORDER BY created_at DESC LIMIT 1
             """,
-            (kind,),
+            (kind, min_tier, str(window_h)),
         )
+        # Nothing eligible left, so build one.
+        #
+        # Hunting for a pre-existing incident cannot be the only path: every
+        # re-learn *consumes* one by mitigating it, and the seeded world holds
+        # a handful. Once the demo has used INC-1001 and INC-1002, tightening
+        # the window leaves only incidents that are too old or on a forbidden
+        # tier, the re-solve escalates without consulting policy, nothing can
+        # be cited, and the compile is rejected. Re-learn then fails
+        # permanently and the runbook stays quarantined with no way forward —
+        # which breaks the one recovery story the project has.
+        #
+        # A constructed incident is the same thing an operator would reach for:
+        # a representative case of this kind that current policy permits acting
+        # on. It is a real row, the run really executes against it, and every
+        # policy check is the real one, so the resulting provenance is grounded
+        # exactly as it would be from a seeded incident. Only the scenario is
+        # synthetic, which is what re-deriving a procedure means.
+        if not rows:
+            incident_id = await _make_representative_incident(kind, min_tier, window_h, db)
+            return f"Remediate {incident_id}"
     else:
         rows = await db.q(
             """
