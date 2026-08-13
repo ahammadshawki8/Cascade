@@ -18,6 +18,7 @@ import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
+import { RunHistory } from "../components/RunHistory";
 import { narrateState } from "../components/narrate";
 import { ActSpine, deriveAct } from "../components/ActSpine";
 
@@ -77,7 +78,7 @@ const clockTime = () =>
 const GUIDE_KEY = "cascade_guide_v2";
 
 /** Pick one, watch it run, understand it, or invent your own. */
-type IncidentTab = "inbox" | "run" | "why" | "author";
+type IncidentTab = "inbox" | "history" | "author";
 
 export default function CascadeApp() {
   const [view, setView] = useState<ViewId>("incidents");
@@ -87,6 +88,8 @@ export default function CascadeApp() {
   // Opens on the inbox: a blank command box asks the viewer to already know
   // the incident ids and their exact format before anything can happen.
   const [incidentTab, setIncidentTab] = useState<IncidentTab>("inbox");
+  /** A one-off line for the island to announce. */
+  const [announce, setAnnounce] = useState<string | null>(null);
   /** The run the Why tab explains — the most recent one to reach a verdict. */
   const [lastTaskId, setLastTaskId] = useState<string | null>(null);
   /** Shared by the decision map and the narrator line. */
@@ -98,6 +101,7 @@ export default function CascadeApp() {
   /** Act progression is derived from what actually happened, never stored. */
   const [guidedRunHappened, setGuidedRunHappened] = useState(false);
   const [policyChanged, setPolicyChanged] = useState(false);
+
 
   const [metrics, setMetrics] = useState<any>(null);
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
@@ -112,6 +116,24 @@ export default function CascadeApp() {
   const [consoleSteps, setConsoleSteps] = useState<StepEvent[]>([]);
   const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
   const [consoleInterrupted, setConsoleInterrupted] = useState(false);
+  /**
+   * One thing at a time.
+   *
+   * A second run started while the first is streaming shares the console's
+   * step list and the single explanation slot, so the two interleave and the
+   * decision map shows a mixture of both. Compiling and re-learning are the
+   * same: they mutate the runbook the next run would retrieve. Rather than
+   * making every one of those paths concurrency-safe, the UI refuses to start
+   * overlapping work and says why.
+   */
+  const busyLabel = consoleRunning
+    ? null
+    : compiling
+      ? "Compiling the runbook from that run"
+      : relearningId
+        ? "Re-learning a quarantined runbook"
+        : null;
+  const locked = consoleRunning || compiling || Boolean(relearningId);
 
   const [copilotAnswer, setCopilotAnswer] = useState<CopilotAnswer | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
@@ -361,7 +383,10 @@ export default function CascadeApp() {
         for (let i = 0; i < 15; i++) {
           await new Promise((r) => setTimeout(r, 2000));
           await fetchPlaybooks();
-          if (playbookCountRef.current > before) break;
+          if (playbookCountRef.current > before) {
+            setAnnounce("A runbook was compiled from that run. The next matching incident can reuse it.");
+            break;
+          }
         }
         setCompiling(false);
       }
@@ -371,10 +396,10 @@ export default function CascadeApp() {
 
       if (reason === "refused_stale") {
         setToast("A matching runbook was refused: policy moved since it was compiled.");
-        setIncidentTab("why");
+        setIncidentTab("history");
       } else if (reason === "refused_precondition") {
         setToast("A matching runbook was refused: its preconditions do not hold here.");
-        setIncidentTab("why");
+        setIncidentTab("history");
       }
     } catch {}
   }, [fetchPlaybooks]);
@@ -463,9 +488,9 @@ export default function CascadeApp() {
   const handleTaskSubmit = useCallback(
     async (input: string): Promise<string | null> => {
       setView("incidents");
-      // Always show the run itself. Landing on Why or Author while steps are
-      // streaming hides the thing the user just asked for.
-      setIncidentTab("run");
+      // No tab switch: the run itself now lives in the floating island, which
+      // is visible from wherever you are. Yanking the view around would move
+      // the page out from under someone mid-click.
       setExplanation(null);
       // Closing the progress window should not silence the *next* run — the
       // user just asked for that one.
@@ -567,6 +592,7 @@ export default function CascadeApp() {
       body: JSON.stringify({ body: rule.body, params }),
     });
     setPolicyChanged(true);
+    setAnnounce(`${ruleKey} updated — re-checking every runbook that depends on it`);
     setToast(`${ruleKey} updated — dependent runbooks are being re-checked.`);
     refreshAll();
     // The worker demotes status_cache and queues relearns just after commit.
@@ -825,7 +851,7 @@ export default function CascadeApp() {
         group: "Actions",
         run: () => {
           setView("incidents");
-          setIncidentTab("why");
+          setIncidentTab("history");
         },
       },
       {
@@ -920,8 +946,7 @@ export default function CascadeApp() {
                       {(
                         [
                           ["inbox", "Inbox", "open incidents waiting to be fixed"],
-                          ["run", "Run", "watch the agent work, step by step"],
-                          ["why", "Why", "which gate decided this run, and on what evidence"],
+                          ["history", "History", "past runs, and why each went the way it did"],
                           ["author", "Author", "create an incident the system has never seen"],
                         ] as [IncidentTab, string, string][]
                       ).map(([id, label, hint]) => (
@@ -946,37 +971,19 @@ export default function CascadeApp() {
                           apiBase={API_BASE}
                           refreshKey={refreshKey}
                           runningId={consoleRunning ? activeIncident : null}
+                          locked={locked}
                           onRun={(input) => void handleTaskSubmit(input)}
                         />
                       </div>
                     )}
 
-                    {/* The console is kept mounted across tab switches: it holds
-                        the live step stream, and unmounting it mid-run would
-                        drop everything streamed so far. */}
-                    <div
-                      className={styles.tabPanel}
-                      style={{ display: incidentTab === "run" ? "flex" : "none" }}
-                    >
-                      <IncidentConsole
-                        initialInput={consoleInput}
-                        isRunning={consoleRunning}
-                        mode={consoleMode}
-                        activePlaybookName={activePlaybookName}
-                        activePlaybookVersion={activePlaybookVersion}
-                        isInterrupted={consoleInterrupted}
-                        steps={consoleSteps}
-                        history={taskHistory}
-                        onSubmit={(input) => void handleTaskSubmit(input)}
-                        onInputChange={setConsoleInput}
-                      />
-                    </div>
-
-                    {incidentTab === "why" && (
+                    {incidentTab === "history" && (
                       <div className={styles.tabPanel}>
-                        <DecisionPanel
+                        <RunHistory
                           apiBase={API_BASE}
-                          taskId={lastTaskId}
+                          refreshKey={refreshKey}
+                          selectedId={lastTaskId}
+                          onSelect={setLastTaskId}
                           onOpenPolicy={(key) => {
                             setHighlightRule(key);
                             setView("policy");
@@ -1088,9 +1095,12 @@ export default function CascadeApp() {
         onClose={() => setPaletteOpen(false)}
       />
 
-      {activeIncident && !progressDismissed && (
+      {(activeIncident || busyLabel) && !progressDismissed && (
         <RunProgress
           running={consoleRunning}
+          steps={consoleSteps}
+          announce={announce}
+          busyLabel={busyLabel}
           onDismiss={() => setProgressDismissed(true)}
           model={buildMapModel({
             incident: activeIncident,

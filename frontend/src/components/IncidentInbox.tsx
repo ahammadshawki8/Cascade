@@ -53,11 +53,14 @@ export function IncidentInbox({
   apiBase,
   refreshKey,
   runningId,
+  locked = false,
   onRun,
 }: {
   apiBase: string;
   refreshKey: number;
   runningId?: string | null;
+  /** Work is already in flight; starting more would interleave with it. */
+  locked?: boolean;
   onRun: (input: string) => void;
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -166,7 +169,8 @@ export function IncidentInbox({
 
               <button
                 className={styles.run}
-                disabled={running}
+                disabled={running || locked}
+                title={locked && !running ? "Waiting for the current work to finish" : undefined}
                 onClick={() => onRun(`Remediate ${inc.incident_id}`)}
               >
                 {running ? <RotateCw size={13} className={styles.spin} /> : <Play size={13} />}
