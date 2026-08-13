@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Check, X, ArrowRight } from "lucide-react";
+import { SystemHeart, runHops, cascadeHops, type Hop } from "./SystemHeart";
+import type { Explanation, StepEvent } from "./runTypes";
 import styles from "./ArchitecturePanel.module.css";
 
 /**
@@ -72,6 +74,16 @@ export function ArchitecturePanel({
   } | null>(null);
   const [checking, setChecking] = useState(false);
 
+  /**
+   * What the diagram is currently animating, and the queue of things it can
+   * animate next.
+   *
+   * The runs are real and so are the turns they take: the path is derived from
+   * the audit trail, not chosen to make the animation look good.
+   */
+  const [reel, setReel] = useState<{ title: string; hops: Hop[] }[]>([]);
+  const [showing, setShowing] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -81,6 +93,37 @@ export function ArchitecturePanel({
       } catch {
         /* the empty state below is the honest fallback */
       }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const items: { title: string; hops: Hop[] }[] = [];
+      try {
+        const res = await fetch(`${apiBase}/tasks?limit=8`);
+        const runs = res.ok ? ((await res.json()).tasks ?? []) : [];
+        const finished = runs
+          .filter((r: { status: string }) => r.status === "succeeded" || r.status === "failed")
+          .slice(0, 4);
+
+        for (const run of finished) {
+          const [ex, st] = await Promise.all([
+            fetch(`${apiBase}/tasks/${run.task_id}/explain`),
+            fetch(`${apiBase}/tasks/${run.task_id}/steps`),
+          ]);
+          if (!ex.ok) continue;
+          const explain: Explanation = await ex.json();
+          const steps: StepEvent[] = st.ok ? ((await st.json()).steps ?? []) : [];
+          items.push({ title: explain.input, hops: runHops(explain, steps) });
+        }
+      } catch {
+        /* an empty reel just means the diagram sits still */
+      }
+      if (!cancelled) setReel(items);
     })();
     return () => {
       cancelled = true;
@@ -107,6 +150,19 @@ export function ArchitecturePanel({
 
   const staleEdges = data.edges.filter((e) => e.is_stale).length;
 
+  // The cascade is a path through the same machine, so it belongs in the same
+  // reel rather than in a panel of its own. It goes last: it only makes sense
+  // once you have watched something be learned.
+  const full = data.last_cascade
+    ? [
+        ...reel,
+        {
+          title: `${data.last_cascade.rule_key} changed`,
+          hops: cascadeHops(data.last_cascade),
+        },
+      ]
+    : reel;
+
   return (
     <div className={styles.panel}>
       <div className={styles.lead}>
@@ -120,6 +176,27 @@ export function ArchitecturePanel({
           transaction that does not grow with how much has been learned.
         </p>
       </div>
+
+      {/* --- the machine, with something moving through it ----------------- */}
+      <section className={styles.section}>
+        <h3 className={styles.h3}>
+          The loop
+          <span className={styles.h3note}>
+            a run that really happened, hop by hop
+          </span>
+        </h3>
+        {full.length > 0 ? (
+          <SystemHeart
+            title={full[showing % full.length].title}
+            hops={full[showing % full.length].hops}
+            onReplay={() => setShowing((i) => i + 1)}
+          />
+        ) : (
+          <div className={styles.empty}>
+            Nothing has run yet. Fix an incident and its path appears here.
+          </div>
+        )}
+      </section>
 
       {/* --- the cascade, with the two numbers side by side ---------------- */}
       <section className={styles.section}>
