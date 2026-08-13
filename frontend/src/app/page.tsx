@@ -361,9 +361,9 @@ export default function CascadeApp() {
       // a Lambda swept once a minute, which outlasts any poll short enough to
       // feel responsive. The worker already announces it.
       try {
-        if (JSON.parse((e as MessageEvent).data)?.action === "created") {
-          fireTour("runbook:compiled");
-        }
+        const action = JSON.parse((e as MessageEvent).data)?.action;
+        if (action === "created") fireTour("runbook:compiled");
+        if (action === "relearned") fireTour("relearn:done");
       } catch {}
     });
 
@@ -915,6 +915,12 @@ export default function CascadeApp() {
       successor = playbooksRef.current.find((p) => p.supersedes === playbookId);
       if (successor) {
         setToast(`Re-learned as ${successor.name} v${successor.version}.`);
+        // Three independent paths now report this — two events and this poll.
+        // The event is faster; the poll cannot be missed, because it reads the
+        // successor out of the database rather than waiting to be told about
+        // it. A walkthrough that stalls on its last step is worse than one
+        // that repeats itself, and firing twice is a no-op.
+        fireTour("relearn:done");
         break;
       }
     }
