@@ -140,7 +140,13 @@ export function RunProgress({
   // Adjusted during render rather than in an effect: an effect would paint the
   // collapsed pill first and expand on the following frame, which reads as a
   // flicker on the one interaction that is supposed to feel immediate.
-  const [seenSignal, setSeenSignal] = useState(openSignal);
+  //
+  // Seeded at 0 rather than at the incoming value, because the common case is
+  // that this component does not exist yet: pressing Re-learn mounts the panel
+  // and raises the signal in the same batch, so there is no *change* to notice
+  // afterwards. Seeding from the prop made that first mount the one case that
+  // silently stayed collapsed.
+  const [seenSignal, setSeenSignal] = useState(0);
   if (openSignal !== seenSignal) {
     setSeenSignal(openSignal);
     if (openSignal > 0) setExpanded(true);
