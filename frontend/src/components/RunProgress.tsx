@@ -90,6 +90,7 @@ export function RunProgress({
   busyLabel,
   compiling = false,
   openSignal = 0,
+  hostCollapsed = false,
   reviewing = false,
   onOpenPolicy,
   onDismiss,
@@ -112,6 +113,14 @@ export function RunProgress({
   compiling?: boolean;
   /** Bumped by the parent to open the panel — a past run, or a re-learn. */
   openSignal?: number;
+  /**
+   * The host wants the panel out of the way — the walkthrough is pointing at
+   * something this window would otherwise cover.
+   *
+   * Kept separate from `expanded` so the viewer's own choice survives: when
+   * the tour stops asking, the panel returns to however they left it.
+   */
+  hostCollapsed?: boolean;
   /** This is a run from history, not the one happening now. */
   reviewing?: boolean;
   onOpenPolicy?: (ruleKey: string) => void;
@@ -175,11 +184,12 @@ export function RunProgress({
     <Check size={13} />
   );
 
-  if (!expanded) {
+  if (!expanded || hostCollapsed) {
     return (
       <button
         className={`${styles.pill} ${announcing ? styles.pillAnnouncing : ""}`}
         style={glass}
+        data-tour="island"
         onClick={() => setExpanded(true)}
         aria-label="Show run progress"
       >
@@ -198,7 +208,13 @@ export function RunProgress({
   }
 
   return (
-    <div className={styles.window} style={glass} role="dialog" aria-label="Run progress">
+    <div
+      className={styles.window}
+      style={glass}
+      data-tour="island"
+      role="dialog"
+      aria-label="Run progress"
+    >
       <div className={styles.header}>
         <span className={`${styles.pulse} ${busy ? styles.pulseOn : ""}`}>{icon}</span>
         <span className={styles.title}>{title}</span>
@@ -231,7 +247,9 @@ export function RunProgress({
           <RelearnBody relearn={relearn} onOpenPolicy={onOpenPolicy} />
         ) : (
           <>
-            <DecisionMap model={model} />
+            <div data-tour="map">
+              <DecisionMap model={model} />
+            </div>
             {narration && <div className={styles.narration}>{narration}</div>}
             <Evidence explanation={explanation} onOpenPolicy={onOpenPolicy} />
           </>

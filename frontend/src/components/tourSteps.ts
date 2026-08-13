@@ -10,9 +10,15 @@ import type { ViewId } from "./ActivityBar";
  *
  * Steps advance on events the app really emits. A step with no `advanceOn` is
  * a reading step and gets a Next button; everything else waits for the system.
+ *
+ * Every run is two steps, always the same shape: click the incident, then hand
+ * over to the floating window. The spotlight blocks whatever it does not cover,
+ * so a single step pointing at the card would leave the viewer unable to open
+ * the one surface where the run is actually visible.
  */
 
 export type TourEvent =
+  | "run:started"
   | "run:finished"
   | "run:reused"
   | "run:refused"
@@ -70,8 +76,21 @@ export const TOUR: TourStep[] = [
     target: '[data-tour="incident-INC-1001"]',
     view: "incidents",
     reveal: ["INC-1001"],
-    advanceOn: "runbook:compiled",
+    advanceOn: "run:started",
     action: "Click Fix it",
+  },
+
+  {
+    id: "the-island",
+    title: "Everything it is doing shows up down here",
+    body:
+      "That floating pill is the only live surface in the app. <b>Click it</b> to open it while the run is still going.\n\nThree things are inside. The <b>map</b> at the top has two lanes: the upper one is the fast path through memory, the lower one is thinking from scratch, and you can watch which one lights up. Below it, each <b>step</b> as it happens — click any of them for the tool call and what came back. At the very bottom, <b>how much thinking it skipped</b>.",
+    mechanism:
+      "It is in the lower lane right now, because there is nothing in memory for it to be in the upper one.",
+    target: '[data-tour="island"]',
+    reveal: ["INC-1001"],
+    advanceOn: "runbook:compiled",
+    action: "Click the pill to open it",
     waitingLabel: "Solving, then compiling what it did",
   },
 
@@ -98,8 +117,21 @@ export const TOUR: TourStep[] = [
     target: '[data-tour="incident-INC-1002"]',
     view: "incidents",
     reveal: ["INC-1002"],
-    advanceOn: "run:reused",
+    advanceOn: "run:started",
     action: "Click Fix it",
+  },
+
+  {
+    id: "reuse-watch",
+    title: "This time the upper lane lights up",
+    body:
+      "Open the window again. <b>Vector search</b>, <b>Freshness</b> and <b>Preconditions</b> all tick and it goes straight to <b>Replay steps</b> — the lower lane stays dark.\n\nThe name of the runbook it matched is printed under the first node.",
+    mechanism:
+      "No planner ran. These are the steps it worked out last time, re-bound to this incident's parameters.",
+    target: '[data-tour="island"]',
+    reveal: ["INC-1002"],
+    advanceOn: "run:reused",
+    action: "Click the pill and watch the top lane",
     waitingLabel: "Searching memory, then replaying",
   },
 
@@ -107,10 +139,10 @@ export const TOUR: TourStep[] = [
     id: "what-reuse-saved",
     title: "Four steps, no thinking",
     body:
-      "Every step was replayed from memory. The planner was not called once, which is where the speed and the cost saving both come from.",
+      "The number at the bottom of the window is what reuse bought: every step replayed from memory, and the planner not called once.",
     mechanism:
       "Measured, not claimed: cold and guided runs are averaged separately over successful episodes only, so the same workload is on both sides of the comparison.",
-    target: '[data-tour="cost"]',
+    target: ['[data-tour="cost"]', '[data-tour="island"]'],
     reveal: [],
     nextLabel: "Now break it",
   },
@@ -153,19 +185,44 @@ export const TOUR: TourStep[] = [
     target: '[data-tour="incident-INC-1009"]',
     view: "incidents",
     reveal: ["INC-1009"],
-    advanceOn: "run:finished",
+    advanceOn: "run:started",
     action: "Click Fix it",
+  },
+
+  {
+    id: "refusal-watch",
+    title: "Open it and watch where it stops",
+    body:
+      "It will set off along the upper lane, get as far as the freshness gate, and go no further.",
+    mechanism:
+      "The gate runs before any step executes, so nothing is applied on the strength of a runbook that has gone out of date.",
+    target: '[data-tour="island"]',
+    reveal: ["INC-1009"],
+    advanceOn: "run:finished",
+    action: "Click the pill to open it",
     waitingLabel: "Matching, refusing, re-planning",
   },
 
   {
-    id: "evidence",
-    title: "And it shows its work",
+    id: "the-drop",
+    title: "You can see it fall out of the fast lane",
     body:
-      "Matched by vector search, refused by provenance, re-planned from scratch — and it will tell you exactly which rule moved and between which versions. Click that row to go and check the rule yourself.",
+      "<b>Vector search</b> has a tick — it did find the runbook, and the name is printed under it. <b>Freshness</b> has a cross.\n\nThe line then drops out of the upper lane into the lower one, and the run finishes along the bottom. That drop is the refusal, drawn.",
+    mechanism:
+      "A refusal and a cold start produce the same steps. Only the gate that stopped it tells them apart, which is why it is drawn rather than described.",
+    target: ['[data-tour="map"]', '[data-tour="island"]'],
+    reveal: [],
+    nextLabel: "And the evidence",
+  },
+
+  {
+    id: "evidence",
+    title: "And here is the rule that moved",
+    body:
+      "Named, with both version numbers: what the runbook was compiled against, and what policy is at now. <b>Click that row</b> and it takes you to the rule so you can check it yourself.",
     mechanism:
       "This is the difference between a system that is confident and a system that is checkable.",
-    target: '[data-tour="evidence"]',
+    target: ['[data-tour="evidence"]', '[data-tour="island"]'],
     reveal: [],
     nextLabel: "Repair it",
   },

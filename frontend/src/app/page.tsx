@@ -647,6 +647,9 @@ export default function CascadeApp() {
       setReviewing(false);
       setActiveIncident((input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase() ?? input);
       setConsoleRunning(true);
+      // The walkthrough hands over to the floating window here: the next thing
+      // worth looking at is not on this page.
+      fireTour("run:started");
 
       try {
         const res = await fetch(`${API_BASE}/tasks`, {
@@ -668,7 +671,7 @@ export default function CascadeApp() {
         return null;
       }
     },
-    [attachTaskListeners, clearIsland]
+    [attachTaskListeners, clearIsland, fireTour]
   );
 
   /**
@@ -1164,6 +1167,24 @@ export default function CascadeApp() {
   const tourReveal =
     tourStep === null ? null : (TOUR[tourStep]?.reveal ?? null);
 
+  /**
+   * Get the floating window out of the way when the walkthrough is pointing at
+   * something else.
+   *
+   * Expanded, it is large enough to sit on top of the incident list, and the
+   * spotlight cannot help with that: it dims what it does not cover, but the
+   * window is still physically in front of the card the viewer is being told
+   * to click.
+   */
+  const tourTargetsIsland = (() => {
+    if (tourStep === null) return false;
+    const t = TOUR[tourStep]?.target;
+    const selectors = Array.isArray(t) ? t : t ? [t] : [];
+    return selectors.some((sel) =>
+      /island|cost|evidence|map/.test(sel)
+    );
+  })();
+
   return (
     <div className={styles.shell}>
       <ActivityBar
@@ -1363,6 +1384,7 @@ export default function CascadeApp() {
           busyLabel={busyLabel}
           compiling={compiling}
           openSignal={islandOpen}
+          hostCollapsed={tourStep !== null && !tourTargetsIsland}
           reviewing={reviewing}
           onOpenPolicy={(key) => {
             setHighlightRule(key);

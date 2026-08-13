@@ -248,3 +248,10 @@
 .para:last-child {
   margin-bottom: 0;
 }
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}

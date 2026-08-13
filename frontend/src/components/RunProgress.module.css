@@ -105,7 +105,10 @@
    transparent or the effect is covered by a solid rectangle. */
 .window :global(svg) { background: transparent; }
 
-.body > div:first-child {
+/* The map now sits inside a wrapper so the walkthrough can point at it, so the
+   transparency has to reach one level further down. */
+.body > div:first-child,
+.body > div:first-child > div {
   background: transparent !important;
   border-bottom: none !important;
 }

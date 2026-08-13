@@ -219,16 +219,23 @@ export function GuidedTour({
           </div>
         )}
 
+        {/* The instruction and the wait are shown together rather than one
+            replacing the other. A step can ask you to look at something *while*
+            the system works, and hiding the instruction the moment it starts
+            working means you never see what you were meant to do. */}
         <div className={styles.foot}>
           {step.advanceOn ? (
-            waiting ? (
-              <span className={styles.waiting}>
-                <Loader2 size={13} className={styles.spin} />
-                {step.waitingLabel ?? "Waiting for that to finish"}
+            <span className={styles.actions}>
+              <span className={styles.doIt}>
+                {step.action ?? "Click the highlighted control"}
               </span>
-            ) : (
-              <span className={styles.doIt}>{step.action ?? "Click the highlighted control"}</span>
-            )
+              {waiting && (
+                <span className={styles.waiting}>
+                  <Loader2 size={13} className={styles.spin} />
+                  {step.waitingLabel ?? "Waiting for that to finish"}
+                </span>
+              )}
+            </span>
           ) : preparing ? (
             <span className={styles.waiting}>
               <Loader2 size={13} className={styles.spin} />
@@ -242,7 +249,7 @@ export function GuidedTour({
           )}
           <span className={styles.spacer} />
           <button className={styles.skip} onClick={onCancel}>
-            Skip the walkthrough
+            Skip
           </button>
         </div>
 
