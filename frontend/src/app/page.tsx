@@ -352,10 +352,19 @@ export default function CascadeApp() {
       fetchPlaybooks();
       setRefreshKey((k) => k + 1);
     });
-    es.addEventListener("playbook.changed", () => {
+    es.addEventListener("playbook.changed", (e) => {
       fetchPlaybooks();
       fetchMetrics();
       setRefreshKey((k) => k + 1);
+      // The compile is the walkthrough's cue to move on, and polling for it
+      // was the wrong instrument: in a deployment the job goes through SQS to
+      // a Lambda swept once a minute, which outlasts any poll short enough to
+      // feel responsive. The worker already announces it.
+      try {
+        if (JSON.parse((e as MessageEvent).data)?.action === "created") {
+          fireTour("runbook:compiled");
+        }
+      } catch {}
     });
 
     /**
@@ -510,7 +519,8 @@ export default function CascadeApp() {
       if (data?.mode === "explore" && data?.status === "succeeded") {
         setCompiling(true);
         const before = playbookCountRef.current;
-        for (let i = 0; i < 15; i++) {
+        // Long enough to cover a Lambda sweep, which fires once a minute.
+        for (let i = 0; i < 60; i++) {
           await new Promise((r) => setTimeout(r, 2000));
           await fetchPlaybooks();
           if (playbookCountRef.current > before) {
