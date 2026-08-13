@@ -73,6 +73,11 @@ export function ArchitecturePanel({
     error?: string;
   } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [surv, setSurv] = useState<{
+    regions: { region: string; zones: string[] }[];
+    survival_goal: string | null;
+    zone_config: string | null;
+  } | null>(null);
 
   /**
    * What the diagram is currently animating, and the queue of things it can
@@ -92,6 +97,21 @@ export function ArchitecturePanel({
         if (res.ok && !cancelled) setData(await res.json());
       } catch {
         /* the empty state below is the honest fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${apiBase}/architecture/survivability`);
+        if (res.ok && !cancelled) setSurv(await res.json());
+      } catch {
+        /* the section hides itself when the cluster will not say */
       }
     })();
     return () => {
@@ -234,10 +254,23 @@ export function ArchitecturePanel({
             </div>
             <p className={styles.note}>
               Close the old version, insert the new one, one outbox row, one audit
-              row. That is the whole write set, and it is the same four whether one
-              runbook depends on this rule or a hundred thousand. Nothing marked
-              those runbooks stale, because nothing had to.
+              row. That is the whole write set. Nothing marked those runbooks
+              stale, because nothing had to.
             </p>
+            {/* The demo world is too small for the O(1) claim to be visible in
+                it, so the number that makes it checkable is stated here with
+                its method attached. */}
+            <div className={styles.scale}>
+              <span className={styles.scaleTitle}>and at size</span>
+              <span className={styles.scaleBody}>
+                Seeded against this cluster with{" "}
+                <b>50,000 runbooks depending on one rule</b>: still 4 writes,
+                50,000 left stale, cascade <b>1,583 ms</b>. The same test at 3,000
+                runbooks took 1,703 ms — sixteen times the dependent set and no
+                slower, because neither transaction touched a runbook row.
+                Reproduce with <code>scripts/seed_scale.py</code>.
+              </span>
+            </div>
           </div>
         ) : (
           <div className={styles.empty}>
@@ -359,6 +392,45 @@ export function ArchitecturePanel({
           table, and nothing about the results would look different.
         </p>
       </section>
+
+      {/* --- survivability -------------------------------------------------- */}
+      {surv && surv.regions.length > 0 && (
+        <section className={styles.section}>
+          <h3 className={styles.h3}>
+            Survivability
+            <span className={styles.h3note}>read from the cluster, not asserted</span>
+          </h3>
+          <div className={styles.survRow}>
+            <div className={styles.survGoal}>
+              <span className={styles.survGoalValue}>
+                SURVIVE {String(surv.survival_goal ?? "?").toUpperCase()} FAILURE
+              </span>
+              <span className={styles.survGoalLabel}>
+                the database keeps serving through the loss of one{" "}
+                {surv.survival_goal === "region" ? "region" : "availability zone"}
+              </span>
+            </div>
+            <div className={styles.survRegions}>
+              {surv.regions.map((r) => (
+                <div key={r.region} className={styles.survRegion}>
+                  <span className={styles.survRegionName}>{r.region}</span>
+                  <span className={styles.survZones}>{r.zones.join(" · ")}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {surv.zone_config && <pre className={styles.plan}>{surv.zone_config}</pre>}
+          <p className={styles.note}>
+            Three voting replicas placed in separate availability zones, with the
+            lease preferring the primary region. Losing a zone costs a re-election
+            and nothing else. Going from zone survival to region survival is one
+            statement — <code>ALTER DATABASE cascade SURVIVE REGION FAILURE</code>{" "}
+            — once the cluster spans three or more regions; it is a provisioning
+            decision, not a code change, and the application does not know the
+            difference.
+          </p>
+        </section>
+      )}
 
       {/* --- outbox --------------------------------------------------------- */}
       <section className={styles.section}>

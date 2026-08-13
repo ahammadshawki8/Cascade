@@ -158,6 +158,47 @@ async def architecture():
     }
 
 
+@router.get("/architecture/survivability")
+async def survivability():
+    """What this database survives, read from the cluster.
+
+    T3.2 was a design note for most of the project's life, which is the weakest
+    possible form of a survivability claim. This reports the configuration that
+    is actually in force: the regions the database spans, its survival goal,
+    and the replica placement the zone config resolves to.
+    """
+    if _stub_mode():
+        return {"regions": [], "survival_goal": None, "zone_config": None}
+
+    from app.db import q
+
+    out: dict = {"regions": [], "survival_goal": None, "zone_config": None}
+    try:
+        rows = await q("SELECT region, zones FROM [SHOW REGIONS FROM DATABASE cascade]")
+        out["regions"] = [{"region": r["region"], "zones": r["zones"]} for r in rows]
+    except Exception as exc:
+        log.warning("SHOW REGIONS failed: %s", exc)
+
+    try:
+        rows = await q("SELECT survival_goal FROM [SHOW SURVIVAL GOAL FROM DATABASE cascade]")
+        if rows:
+            out["survival_goal"] = rows[0]["survival_goal"]
+    except Exception as exc:
+        log.warning("SHOW SURVIVAL GOAL failed: %s", exc)
+
+    # The zone config is the part that cannot be argued with: it names the
+    # replica count and the constraints the cluster is really enforcing.
+    try:
+        rows = await q("SHOW ZONE CONFIGURATION FROM DATABASE cascade")
+        if rows:
+            values = list(rows[0].values())
+            out["zone_config"] = values[1] if len(values) > 1 else None
+    except Exception as exc:
+        log.warning("SHOW ZONE CONFIGURATION failed: %s", exc)
+
+    return out
+
+
 @router.get("/architecture/index")
 async def architecture_index():
     """Live EXPLAIN of the retrieval query.

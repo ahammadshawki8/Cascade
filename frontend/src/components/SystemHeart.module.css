@@ -166,3 +166,66 @@
   .sayText, .sayDetail { animation: none; }
   .edge, .box, .nlabel, .node { transition: none; }
 }
+
+/* --- the simulation boundary ---------------------------------------------- */
+
+.seamNode { cursor: pointer; }
+.seamNode:hover .box { stroke: var(--accent); }
+
+.seamDot {
+  fill: rgba(62, 207, 214, 0.18);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.seamMark {
+  fill: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.seam {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background-color: var(--surface);
+}
+
+.seamTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.seamGrid {
+  display: grid;
+  gap: 5px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+.seamGrid > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11.5px;
+}
+
+.seamGrid code {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  color: var(--st-suspect);
+  white-space: nowrap;
+}
+
+.seamGrid span { color: var(--text-faint); }
+
+.seamReal code { color: var(--st-active); }
+.seamReal span { color: var(--text-dim); }
+
+.seamNote {
+  margin: 11px 0 0;
+  max-width: 88ch;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-faint);
+}

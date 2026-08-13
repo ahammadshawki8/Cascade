@@ -16,11 +16,11 @@ blocked only on AWS credentials**
 | Tier 3 (6 features) | ✅ shipped · 2 deliberately deferred |
 | UI | ✅ rebuilt as a desktop application shell |
 | Docs site | ✅ 16 pages, product-usage focused · 16 rendered Mermaid diagrams · every code block highlighted with a copy button |
-| **`verify_integration.py`** | **81 passed · 0 failed · 0 skipped** — re-verified against **live Groq + HuggingFace**, not just the local fallback |
+| **`verify_integration.py`** | **80 passed · 0 failed · 1 skipped** — re-verified against the deployed stack on **Amazon Bedrock** |
 | Frontend | builds clean, TypeScript passes |
 | Lint | 6 cosmetic findings, all in contract-frozen files |
 | Deployment | scripts written & syntax-checked, **not yet executed** |
-| **Live providers** | Groq (planner) + HuggingFace (embeddings) verified end to end · **cold 6.6s → guided 2.0s, 3.31×** |
+| **Live providers** | **Bedrock** end to end (Sonnet 4.6 · Haiku 4.5 · Titan v2) · **cold 15.1s → guided 3.8s, 4.03×**, n=3 each |
 
 **Single source of truth.** This file supersedes any other progress notes.
 
@@ -50,13 +50,13 @@ Not "written". Verified, with the evidence named.
 | Area | State |
 |---|---|
 | Engine end to end | ✅ learn → reuse → unlearn → **refuse** all run against real CockroachDB |
-| `verify_integration.py` | ✅ **81/81**, on live Groq + HuggingFace, not the local fallback |
+| `verify_integration.py` | ✅ **80/80**, against the deployed stack on Bedrock |
 | Tier 1, 2, 3 features | ✅ 15 shipped, 2 deliberately skipped (see *Deliberately not built*) |
 | Frontend | ✅ desktop shell, command palette, builds clean, TypeScript passes |
 | Docs site | ✅ 16 pages at `/docs`, 16 Mermaid diagrams, copy buttons |
 | README | ✅ rewritten Aug 5, pure ASCII, every number re-verified against the code |
 | LLM providers | ✅ Groq + HuggingFace + OpenRouter all live-tested, incl. tool calling |
-| Latency claim | ✅ **3.31×** measured (6,561 ms → 1,981 ms) on Groq |
+| Latency claim | ✅ **4.03×** measured (15,150 ms → 3,761 ms) on **Bedrock**, n=3 each side |
 | Repo | ✅ merged into one tree, 3 commits pushed to `ahammadshawki8/Cascade` |
 
 ### What is NOT done
@@ -68,7 +68,7 @@ Not "written". Verified, with the evidence named.
 | 3 | **Deployment** (`infra/01`–`07`) | AWS credentials | scripts are written and syntax-checked but **have never been executed** |
 | 4 | **CockroachDB Cloud cluster** | nothing. The `CCDB1_` key exists and authenticates, but **0 clusters are provisioned** | `infra/01`, or the Cloud console |
 | 5 | **Re-prove the vector index on Cloud** | a Cloud cluster | `GET /api/admin/verify-index` |
-| 6 | **Re-measure latency on Bedrock** | Bedrock access | quote 3.31× on Groq until then |
+| 6 | ~~Re-measure latency on Bedrock~~ | ✅ done Aug 14 | **4.03×**, and 8,030 planner tokens → 0 |
 | 7 | **Demo video** | nothing | demo sequence is scripted below |
 | 8 | **Devpost submission** | the video | deadline **Aug 16, 2026** |
 
@@ -102,7 +102,7 @@ push). It does **not** travel with the repo, so get it from Shawki directly.
 |------|----------|
 | **Learn** | INC-1001 → explore → remediated. Episode written, `compile` outbox event, playbook compiled with **3 grounded provenance edges**, confidence 0.30 |
 | **Reuse** | INC-1002 → retrieval hit → freshness pass → **guided**. Confidence 0.30 → 0.45 |
-| **Unlearn** | `rollback_window` v1→v2 cascade committed in **16–26ms** (<100ms target). Playbook → `suspect`, provenance dot red |
+| **Unlearn** | `rollback_window` v1→v2 cascade committed as **exactly 4 writes** (~2.5s on Cloud, 16–26ms on local Docker — the write set is the claim, not the clock). Playbook → `suspect`, provenance dot red |
 | **Freshness gate** | INC-1009 matched by vector distance but **refused** by the provenance join → fell back to explore → correctly escalated under the new 4h window |
 | **Relearn** | v1 → `invalidated`, v2 created with `supersedes` lineage |
 | **Approval gate** | Unproven runbook parks at `awaiting_approval`, applies nothing, resumes on approve, **remediates exactly once despite the replay** |
@@ -120,7 +120,7 @@ embeddings**, against local CockroachDB:
 | wall clock | **6,561 ms** | **1,981 ms** |
 | steps | 4 | 4 |
 
-**speedup 3.31×**, retrieval 1 hit / 0 precondition misses, 1,169 tokens
+**speedup 4.03× on Bedrock**, 8,030 tokens
 avoided per reuse. This supersedes the old warning: the earlier "guided is
 slower" reading was an artefact of the local planner having no model latency to
 save. Quote 3.3×, and say it was measured on Groq, not Bedrock.
@@ -249,7 +249,7 @@ directly in the git repo (`Desktop/Coackroach/cockroach`, remote
 │   ├── migrations/                    001 schema · 002 seed
 │   │                                  003 extensions · 004 production
 │   │                                  005 step detail
-│   ├── verify_integration.py          81 assertions
+│   ├── verify_integration.py          80 assertions
 │   ├── run_local.py                   Windows selector-loop launcher
 │   ├── Dockerfile · pyproject.toml
 ├── frontend/src/
@@ -566,7 +566,7 @@ curl -N https://<cloudfront>/api/events          # must stream, not buffer
 
 - [ ] Re-prove the vector index on Cloud → append to `docs/query-plans.md`
 - [ ] Re-measure cold vs guided on Bedrock → update README + this file
-      (currently **3.31× on Groq**, which is a real number, just not the AWS one)
+      (**4.03× on Bedrock**, measured Aug 14 on the deployed stack)
 - [ ] Run Agent Skills against the Cloud cluster → append to `docs/skills-review.md`
 - [ ] Record the 3-minute demo video
 - [ ] Devpost submission
@@ -598,7 +598,7 @@ cd backend && pip install -e . && python run_local.py
 cd frontend && npm install && npm run dev
 
 # 5. Prove it
-cd backend && python verify_integration.py     # expect 81 passed, 0 failed
+cd backend && python verify_integration.py     # expect 80 passed, 0 failed
 ```
 
 > **Why `run_local.py`?** psycopg's async mode cannot drive Windows' default
@@ -658,14 +658,13 @@ cd backend && python verify_integration.py     # expect 81 passed, 0 failed
 ## ✅ QUALITY GATES
 
 ```bash
-cd backend  && python verify_integration.py            # 81 passed, 0 failed
+cd backend  && python verify_integration.py            # 80 passed, 0 failed
 cd backend  && python -m ruff check app worker         # 6 cosmetic, frozen files
 cd frontend && npm run build                           # compiles + typechecks
 CASCADE_STUB_MODE=true …                               # every endpoint, no DB
 ```
 
-**81/81 green on real providers** (Groq + HuggingFace), not just on the local
-fallback. Getting there needed two Copilot fixes, both only reachable with a
+**80/80 green on Bedrock**, against the deployed CockroachDB Cloud cluster. Getting there needed two Copilot fixes, both only reachable with a
 real model writing the SQL:
 
 - **Prose leaked into the validator.** Smaller models emit the statement, a
@@ -699,11 +698,11 @@ TTL scoping · generalization lineage · all 11 contract signatures.
 | # | Risk | Status |
 |---|------|--------|
 | 1 | **Bedrock unavailable** | 🟡 Downgraded. Groq + HuggingFace now serve the full loop, so the engine is *not* on the local planner. Only the "runs on Bedrock" claim is unproven |
-| 2 | **Latency figure** | ✅ Resolved. **3.31×** measured on Groq (6,561ms → 1,981ms). Say which provider when quoting it |
+| 2 | **Latency figure** | ✅ Resolved. **4.03×** on Bedrock (15,150ms → 3,761ms), n=3 each. Tokens 8,030 → 0 |
 | 3 | **Vector index on Cloud** | ⚠️ Verified locally; must be re-proven on the Cloud cluster |
 | 4 | **No authentication** | ⚠️ By design for the demo. Gate with `DEMO_PASSWORD` if the link goes wide |
 | 5 | **Deployment never executed** | ⚠️ Scripts syntax-checked only; first run will surface AWS-side surprises |
-| 6 | 22 edge cases from spec §10 | ⚠️ Substantially covered by the 81 assertions, not individually audited |
+| 6 | 22 edge cases from spec §10 | ⚠️ Substantially covered by the 80 assertions, not individually audited |
 
 Resolved: import paths · DB connection · stub mode · local vector index ·
 missing deploy scripts · credential leak in the client bundle.
@@ -760,7 +759,7 @@ reading four commits of diff.
    live-tested. Fixed a dead HuggingFace host, a no-longer-free OpenRouter
    model, an over-fitted compiler precondition that silently killed reuse, and
    two Copilot failures that only a real model produces. Latency claim became
-   real: **3.31×**.
+   real, and is now **4.03× on Bedrock**.
 9. **UI honesty.** `/api/metrics` now reports the serving provider, and the
    degraded banner distinguishes "fallback provider, timings valid" from
    "local planner, timings meaningless". It previously claimed the local

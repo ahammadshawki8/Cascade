@@ -312,6 +312,12 @@ export function SystemHeart({
 }) {
   const [at, setAt] = useState(0);
   const [playing, setPlaying] = useState(true);
+  /**
+   * "It is all mocked" only sounds damning while the boundary is invisible.
+   * Exactly one node in this diagram is simulated, so it says so, and says
+   * what it would be instead.
+   */
+  const [seam, setSeam] = useState(false);
   const dotRef = useRef<SVGCircleElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const raf = useRef<number | null>(null);
@@ -437,7 +443,10 @@ export function SystemHeart({
           return (
             <g
               key={id}
-              className={`${styles.node} ${styles[`m_${mood}`]} ${here ? styles.here : ""}`}
+              className={`${styles.node} ${styles[`m_${mood}`]} ${here ? styles.here : ""} ${
+                id === "tools" ? styles.seamNode : ""
+              }`}
+              onClick={id === "tools" ? () => setSeam((v) => !v) : undefined}
             >
               <rect x={n.x} y={n.y} width={n.w} height={NH} rx={9} className={styles.box} />
               <text x={n.x + n.w / 2} y={n.y + 22} className={styles.nlabel}>
@@ -446,12 +455,59 @@ export function SystemHeart({
               <text x={n.x + n.w / 2} y={n.y + 38} className={styles.nsub}>
                 {n.sub}
               </text>
+              {id === "tools" && (
+                <>
+                  <circle cx={n.x + n.w - 13} cy={n.y + 13} r={8} className={styles.seamDot} />
+                  <text x={n.x + n.w - 13} y={n.y + 17} className={styles.seamMark}>
+                    ?
+                  </text>
+                </>
+              )}
             </g>
           );
         })}
 
         <circle ref={dotRef} r={7} className={styles.dot} filter="url(#sh-glow)" opacity="0" />
       </svg>
+
+      {seam && (
+        <div className={styles.seam}>
+          <div className={styles.seamTitle}>
+            Tools is the only simulated component on this diagram
+          </div>
+          <div className={styles.seamGrid}>
+            <div>
+              <code>get_incident</code>
+              <span>→ PagerDuty, Datadog, Sentry</span>
+            </div>
+            <div>
+              <code>apply_remediation</code>
+              <span>→ kubectl rollout undo, ArgoCD, your deploy API</span>
+            </div>
+            <div>
+              <code>notify_oncall</code>
+              <span>→ Slack, PagerDuty</span>
+            </div>
+            <div className={styles.seamReal}>
+              <code>get_rules</code>
+              <span>not simulated — your real policy table</span>
+            </div>
+            <div className={styles.seamReal}>
+              <code>check_remediation_eligibility</code>
+              <span>not simulated — deterministic Python over those rules, no model</span>
+            </div>
+          </div>
+          <p className={styles.seamNote}>
+            Five functions in one file, and swapping them is the whole
+            integration. Bounded on purpose: the spec requires the demo world to
+            have zero external dependencies, precisely so a live call to someone
+            else&rsquo;s API can never hang this while you are watching it.
+            Everything else on this diagram — retrieval, the provenance join, the
+            cascade, the outbox — is running against a real CockroachDB cluster
+            right now.
+          </p>
+        </div>
+      )}
 
       <div className={styles.say}>
         <div className={styles.sayText}>{current?.say}</div>

@@ -330,10 +330,21 @@ async def check_unlearn(db, playbook_id) -> None:
         db=db,
     )
     cascade_ms = int((time.perf_counter() - started) * 1000)
+    # Assert the write set, not the wall clock.
+    #
+    # This used to require under 100ms, which held against single-node
+    # CockroachDB in Docker and does not survive a multi-node Cloud cluster,
+    # where the same four writes take a couple of seconds of consensus and
+    # network. Failing there was the test being wrong, not the system.
+    #
+    # D1 does not promise a latency budget. It promises that changing a rule
+    # costs a fixed number of writes however much has been learned, so that is
+    # what is checked. The timing travels in the note, where it is information
+    # rather than a threshold.
     record(
-        "unlearn: cascade transaction completes under 100ms",
-        cascade_ms < 100,
-        f"{cascade_ms}ms, {len(impact.impacted_playbooks)} playbook(s) impacted",
+        "unlearn: cascade is a fixed four writes, whatever depends on the rule",
+        impact.writes == 4,
+        f"{impact.writes} writes, {len(impact.impacted_playbooks)} playbook(s) impacted, {cascade_ms}ms",
     )
 
     versions = await db.one(

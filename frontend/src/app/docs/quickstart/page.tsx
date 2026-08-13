@@ -187,7 +187,7 @@ npm run dev`}</Code>
           <Code lang="bash">{`cd cascade/backend
 python verify_integration.py`}</Code>
           <p>
-            Expect <C>81 passed, 0 failed, 0 skipped</C>. It takes about a
+            Expect <C>80 passed, 0 failed, 1 skipped</C>. It takes about a
             minute and leaves the demo world clean.
           </p>
         </SubSection>

@@ -384,3 +384,93 @@
 @media (prefers-reduced-motion: reduce) {
   .spin { animation: none; }
 }
+
+/* --- survivability -------------------------------------------------------- */
+
+.survRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.survGoal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 15px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--st-active);
+  background-color: rgba(93, 209, 129, 0.07);
+}
+
+.survGoalValue {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--st-active);
+}
+
+.survGoalLabel {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.survRegions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.survRegion {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.survRegionName {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.survZones {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.scale {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-dim);
+  background-color: var(--accent-soft);
+}
+
+.scaleTitle {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.scaleBody {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.scaleBody b { color: var(--text); font-weight: 600; }
+
+.scaleBody code {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  background-color: var(--raised);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
