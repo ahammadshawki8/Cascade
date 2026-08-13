@@ -149,11 +149,27 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
                 ("postmortem", json.dumps({"episode_id": str(episode_id)})),
             )
 
-        # Only a cold success teaches us something new worth compiling.
+        # Only a cold run that actually fixed something is worth compiling.
+        #
+        # `outcome == "success"` alone was letting escalations through, because
+        # an escalation finishes cleanly — it is policy working, not knowledge
+        # gained. Two things followed. The same run was recorded as an
+        # anti-playbook twenty lines above *and* offered as a procedure to
+        # replay, which cannot both be right. And whether it became a runbook
+        # depended on whether the planner happened to call the eligibility tool
+        # it did not strictly need: with the call there was provenance to cite
+        # and the compile succeeded, without it the compiler refused. Identical
+        # incident, identical policy, different answer depending on the model.
+        #
+        # An "escalate for bad deploy" runbook would also sit next to the real
+        # rollback one in vector space, so a tier-2 incident could retrieve it
+        # and then fail its preconditions — a hit followed by a miss, which is
+        # not a near miss but a runbook that cannot be reused.
+        #
         # The trajectory travels in the payload: `episodes` has no column for
         # it, and inlining keeps compilation working when S3 isn't configured.
         # It is bounded by max_steps_per_task, so the row stays small.
-        if mode == "explore" and outcome == "success" and episode_id:
+        if mode == "explore" and result == "remediated" and episode_id:
             await db.q(
                 "INSERT INTO outbox (kind, payload) VALUES (%s, %s)",
                 (
