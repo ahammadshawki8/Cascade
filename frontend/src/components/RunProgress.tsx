@@ -453,6 +453,17 @@ function RelearnBody({
         })}
       </div>
 
+      {/* The outbox is swept on a timer, so this first phase can sit still for
+          a moment. Saying why turns a stalled-looking spinner into the design
+          decision it actually is. */}
+      {relearn.phase === "queued" && (
+        <div className={styles.relearnWait}>
+          Queued in the transactional outbox. A worker claims it on the next sweep,
+          which is what keeps this identical whether you pressed the button or a
+          policy change queued it for you.
+        </div>
+      )}
+
       {relearn.phase === "done" && (
         <div className={styles.relearnGood}>
           {relearn.newVersion != null ? (

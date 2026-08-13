@@ -497,3 +497,13 @@
 }
 
 .costText b { color: var(--text); font-weight: 600; }
+
+.relearnWait {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
