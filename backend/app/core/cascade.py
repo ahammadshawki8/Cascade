@@ -24,12 +24,18 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 from uuid import UUID, uuid4
 
 from .models import ImpactedPlaybook, ImpactedTask, ImpactResult
 
 log = logging.getLogger(__name__)
+
+# Close the old version, insert the new one, one outbox row, one audit row.
+# Named rather than hardcoded at the call sites, because the number *is* the
+# claim: it does not grow with how many playbooks depend on the rule.
+_WRITES_PER_CASCADE = 4
 
 
 async def change_rule(
@@ -99,18 +105,34 @@ async def change_rule(
                         "from_version": old_version,
                         "to_version": new_version,
                         "params": new_params,
+                        # The bounded write set is the claim this whole design
+                        # exists to make, and it was only ever visible by
+                        # reading the source. Recorded here so the UI can
+                        # report it as a fact rather than assert it.
+                        "writes": _WRITES_PER_CASCADE,
                     }
                 ),
             ),
         )
         return event_id, old_version, new_version, domain
 
+    started = time.perf_counter()
     event_id, old_version, new_version, domain = await db.run_txn(txn)
-    log.info("rule %s: v%d -> v%d by %s", rule_key, old_version, new_version, actor)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    log.info(
+        "rule %s: v%d -> v%d by %s in %dms",
+        rule_key,
+        old_version,
+        new_version,
+        actor,
+        duration_ms,
+    )
 
     impact = await analyze_impact(rule_key, db, committed=True)
     impact.old_version = old_version
     impact.new_version = new_version
+    impact.writes = _WRITES_PER_CASCADE
+    impact.duration_ms = duration_ms
 
     await _publish_sqs(event_id, sqs_client)
     await _interrupt_running_tasks(

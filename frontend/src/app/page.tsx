@@ -19,7 +19,9 @@ import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
 import { RunHistory } from "../components/RunHistory";
 import { narrateState } from "../components/narrate";
-import { ActSpine, deriveAct } from "../components/ActSpine";
+import { GuidedTour } from "../components/GuidedTour";
+import { TOUR, TourEvent } from "../components/tourSteps";
+import { ArchitecturePanel } from "../components/ArchitecturePanel";
 
 const API_ROOT = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -73,17 +75,30 @@ function adaptPlaybook(raw: any): Playbook {
 const clockTime = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** Bumped whenever the guide itself changes; see the mount effect. */
-const GUIDE_KEY = "cascade_guide_v2";
-
 /** Pick one, watch it run, understand it, or invent your own. */
-type IncidentTab = "inbox" | "history" | "author";
+type IncidentTab = "inbox" | "author";
 
 export default function CascadeApp() {
   const [view, setView] = useState<ViewId>("incidents");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [tourVisible, setTourVisible] = useState(true);
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  /**
+   * The walkthrough, or null when nobody is being walked through anything.
+   *
+   * Whether a step is *waiting* is not stored: it is `locked`, the same flag
+   * that stops overlapping work. The system being busy and the tour waiting
+   * for the system are the same fact, and keeping two copies of it is how they
+   * come to disagree.
+   */
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  /**
+   * The walkthrough resets the world first, and that takes seconds against a
+   * Cloud cluster. Until it lands there is nothing safe to click: a run
+   * started against the old world gets deleted out from under itself
+   * mid-flight, and the tour then waits forever for a compile that can never
+   * happen. So the opening card holds the viewer until the world is real.
+   */
+  const [tourPreparing, setTourPreparing] = useState(false);
   // Opens on the inbox: a blank command box asks the viewer to already know
   // the incident ids and their exact format before anything can happen.
   const [incidentTab, setIncidentTab] = useState<IncidentTab>("inbox");
@@ -103,9 +118,6 @@ export default function CascadeApp() {
   const [reviewing, setReviewing] = useState(false);
   /** Bumped when the user asks to see detail; the island opens on it. */
   const [islandOpen, setIslandOpen] = useState(0);
-  /** Act progression is derived from what actually happened, never stored. */
-  const [guidedRunHappened, setGuidedRunHappened] = useState(false);
-  const [policyChanged, setPolicyChanged] = useState(false);
 
 
   const [metrics, setMetrics] = useState<any>(null);
@@ -158,6 +170,51 @@ export default function CascadeApp() {
     setActivePlaybookVersion(0);
     setProgressDismissed(false);
   }, []);
+
+  /**
+   * Moving the walkthrough is an event, not a synchronisation.
+   *
+   * The step also owns which view you are looking at, so the transition sets
+   * both together rather than letting an effect chase the step afterwards.
+   */
+  const goToStep = useCallback((next: number | null) => {
+    setTourStep(next);
+    if (next == null) return;
+    const step = TOUR[next];
+    if (step.view) {
+      setView(step.view);
+      if (step.view === "incidents") setIncidentTab("inbox");
+    }
+  }, []);
+
+  const cancelTour = useCallback(() => setTourStep(null), []);
+
+  const advanceTour = useCallback(() => {
+    setTourStep((i) => {
+      if (i == null) return null;
+      const next = i + 1 >= TOUR.length ? null : i + 1;
+      queueMicrotask(() => goToStep(next));
+      return i;
+    });
+  }, [goToStep]);
+
+  /**
+   * A step ends when the system finishes its half, never on the click.
+   *
+   * So the walkthrough cannot get ahead of the product: if the compile has not
+   * landed, the card still says it is waiting, because it is.
+   */
+  const fireTour = useCallback(
+    (event: TourEvent) => {
+      setTourStep((i) => {
+        if (i == null || TOUR[i]?.advanceOn !== event) return i;
+        const next = i + 1 >= TOUR.length ? null : i + 1;
+        queueMicrotask(() => goToStep(next));
+        return i;
+      });
+    },
+    [goToStep]
+  );
 
   const [copilotAnswer, setCopilotAnswer] = useState<CopilotAnswer | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
@@ -323,6 +380,7 @@ export default function CascadeApp() {
           ...(d.phase === "done" ? { newName: d.name, newVersion: d.version } : {}),
           ...(d.reason ? { reason: d.reason } : {}),
         }));
+        if (d.phase === "done") fireTour("relearn:done");
       } catch {}
     });
     es.addEventListener("approval.requested", (e) => {
@@ -353,27 +411,20 @@ export default function CascadeApp() {
     // rather than the modal being the first thing that renders.
     if (!tutorialSeen()) setTutorialOpen(true);
 
-    // Act progress is derived from the world, so the only thing worth
-    // persisting is whether the guide was dismissed.
-    //
-    // The key carries a version. The guide used to be a three-button tour and
-    // is now the act spine, and anyone who dismissed the old one would
-    // otherwise never see the new one — including a judge who opened the link
-    // before it changed. A returning visitor gets the replacement once,
-    // and their dismissal of *that* sticks.
-    const saved = localStorage.getItem(GUIDE_KEY);
-    if (saved) {
-      try {
-        if (JSON.parse(saved).dismissed) setTourVisible(false);
-      } catch {}
-    }
-
     return () => {
       clearInterval(health);
       es.close();
       sseRef.current = null;
     };
-  }, [refreshAll, fetchMetrics, fetchPlaybooks, fetchRules, fetchApprovals, fetchInsights]);
+  }, [
+    refreshAll,
+    fetchMetrics,
+    fetchPlaybooks,
+    fetchRules,
+    fetchApprovals,
+    fetchInsights,
+    fireTour,
+  ]);
 
   /**
    * The re-learn's own run is a real task, so its steps arrive on the ordinary
@@ -408,10 +459,6 @@ export default function CascadeApp() {
     es.addEventListener(`task.${taskId}.step`, onStep);
     return () => es.removeEventListener(`task.${taskId}.step`, onStep);
   }, [relearn?.taskId]);
-
-  useEffect(() => {
-    localStorage.setItem(GUIDE_KEY, JSON.stringify({ dismissed: !tourVisible }));
-  }, [tourVisible]);
 
   useEffect(() => {
     if (!toast) return;
@@ -468,6 +515,7 @@ export default function CascadeApp() {
           await fetchPlaybooks();
           if (playbookCountRef.current > before) {
             setAnnounce("A runbook was compiled from that run. The next matching incident can reuse it.");
+            fireTour("runbook:compiled");
             // Re-read the verdict now that the compile has landed. The first
             // read happened seconds too early to know what this run became,
             // and the panel would otherwise keep saying nothing was saved.
@@ -482,7 +530,11 @@ export default function CascadeApp() {
       }
 
       const reason = data?.decision?.reason;
-      if (reason === "reused") setGuidedRunHappened(true);
+      fireTour("run:finished");
+      if (reason === "reused") fireTour("run:reused");
+      if (reason === "refused_stale" || reason === "refused_precondition") {
+        fireTour("run:refused");
+      }
 
       // No tab switch: the evidence is in the island, where the run already is.
       if (reason === "refused_stale") {
@@ -491,7 +543,7 @@ export default function CascadeApp() {
         setToast("A matching runbook was refused: its preconditions do not hold here.");
       }
     } catch {}
-  }, [fetchPlaybooks]);
+  }, [fetchPlaybooks, fireTour]);
 
   /**
    * Step and status topics are per-task (`task.{id}.step`), so handlers can
@@ -499,7 +551,7 @@ export default function CascadeApp() {
    * so this just starts listening — no reconnect.
    */
   const attachTaskListeners = useCallback(
-    (taskId: string, input: string) => {
+    (taskId: string) => {
       const es = sseRef.current;
       if (!es) return;
 
@@ -598,7 +650,7 @@ export default function CascadeApp() {
           return null;
         }
         const data = await res.json();
-        attachTaskListeners(data.task_id, input);
+        attachTaskListeners(data.task_id);
         return data.task_id;
       } catch {
         setConsoleRunning(false);
@@ -685,15 +737,34 @@ export default function CascadeApp() {
     setApprovals([]);
     setInsights([]);
     setCopilotAnswer(null);
-    setTourVisible(true);
-    setGuidedRunHappened(false);
-    setPolicyChanged(false);
     setActiveIncident(null);
     setLastTaskId(null);
     setRelearn(null);
     setReviewing(false);
     refreshAll();
   };
+
+  /**
+   * The walkthrough describes a world in a known state, so it puts the world
+   * in that state first.
+   *
+   * Without the reset, a viewer who has already fixed INC-1001 would be told
+   * "the agent has nothing to reuse" and then watch it reuse something. The
+   * tour would be lying on its second sentence.
+   */
+  const startTour = useCallback(async () => {
+    setTutorialOpen(false);
+    setView("incidents");
+    setIncidentTab("inbox");
+    setTourPreparing(true);
+    goToStep(0);
+    try {
+      await handleResetDemo();
+    } finally {
+      setTourPreparing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goToStep]);
 
   const handleSimulateImpact = async (
     ruleKey: string,
@@ -723,14 +794,31 @@ export default function CascadeApp() {
     const rule = rules.find((r) => r.rule_key === ruleKey);
     if (!rule) return;
 
-    await fetch(`${PRIVILEGED}/rules/${ruleKey}`, {
+    const res = await fetch(`${PRIVILEGED}/rules/${ruleKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: rule.body, params }),
     });
-    setPolicyChanged(true);
-    setAnnounce(`${ruleKey} updated — re-checking every runbook that depends on it`);
-    setToast(`${ruleKey} updated — dependent runbooks are being re-checked.`);
+    fireTour("policy:committed");
+
+    // The receipt, not a reassurance. "Dependent runbooks are being re-checked"
+    // throws away the only number that makes this architecture worth building:
+    // the write set stayed fixed while the invalidation did not.
+    let receipt = `${ruleKey} updated — re-checking every runbook that depends on it`;
+    try {
+      const impact = await res.json();
+      const n = impact?.impacted_playbooks?.length ?? 0;
+      if (impact?.writes) {
+        receipt =
+          `${ruleKey} v${impact.old_version} to v${impact.new_version} · ` +
+          `${impact.writes} writes · ${n} runbook${n === 1 ? "" : "s"} invalidated` +
+          (impact.duration_ms != null ? ` · ${impact.duration_ms}ms` : "");
+      }
+    } catch {
+      /* the generic line above is still true */
+    }
+    setAnnounce(receipt);
+    setToast(receipt);
     refreshAll();
     // The worker demotes status_cache and queues relearns just after commit.
     setTimeout(refreshAll, 4000);
@@ -993,9 +1081,10 @@ export default function CascadeApp() {
       },
       {
         id: "act:tour",
-        label: tourVisible ? "Hide guided tour" : "Show guided tour",
+        label: "Start the guided walkthrough",
+        hint: "one incident at a time, from cold run to re-learn",
         group: "Actions",
-        run: () => setTourVisible((v) => !v),
+        run: startTour,
       },
       {
         id: "act:intro",
@@ -1022,10 +1111,7 @@ export default function CascadeApp() {
         label: "Explain the last run",
         hint: "which gate decided it, and on what evidence",
         group: "Actions",
-        run: () => {
-          setView("incidents");
-          setIncidentTab("history");
-        },
+        run: () => setView("history"),
       },
       {
         id: "act:docs",
@@ -1040,7 +1126,7 @@ export default function CascadeApp() {
 
     return [...go, ...runs, ...asks, ...actions];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tourVisible, handleTaskSubmit, refreshAll, fetchInsights]);
+  }, [handleTaskSubmit, refreshAll, fetchInsights, startTour]);
 
   // ------------------------------------------------------------------ render
 
@@ -1057,6 +1143,17 @@ export default function CascadeApp() {
 
   const activeView = VIEWS.find((v) => v.id === view)!;
 
+  /**
+   * Which incidents the inbox may show.
+   *
+   * During the walkthrough, one — so there is never a wrong thing to click.
+   * Twelve cards on screen is eleven ways to take the tour somewhere it did
+   * not plan for. `null` means no restriction, which is what leaving the tour
+   * restores in a single render.
+   */
+  const tourReveal =
+    tourStep === null ? null : (TOUR[tourStep]?.reveal ?? null);
+
   return (
     <div className={styles.shell}>
       <ActivityBar
@@ -1072,12 +1169,9 @@ export default function CascadeApp() {
           <span className={styles.viewTitle}>{activeView.label}</span>
           <span className={styles.viewHint}>{activeView.hint}</span>
           <span className={styles.headerSpacer} />
-          {!tourVisible && (
-            <button
-              className={styles.headerAction}
-              onClick={() => setTourVisible(true)}
-            >
-              Show tour
+          {tourStep === null && (
+            <button className={styles.headerAction} onClick={startTour}>
+              Guided walkthrough
             </button>
           )}
         </header>
@@ -1085,29 +1179,6 @@ export default function CascadeApp() {
         <div className={styles.metrics}>
           <MetricBar data={metrics} />
         </div>
-
-        {tourVisible && (
-          <div className={styles.tour}>
-            <ActSpine
-              state={deriveAct({
-                runbookCount: playbooks.length,
-                guidedRunHappened,
-                policyChanged,
-              })}
-              onGoToPolicy={() => {
-                setHighlightRule("incident.rollback_window");
-                setView("policy");
-              }}
-            />
-            <button
-              className={styles.tourDismiss}
-              onClick={() => setTourVisible(false)}
-              aria-label="Hide the guide"
-            >
-              hide
-            </button>
-          </div>
-        )}
 
         <div className={styles.workspace}>
           <div className={styles.viewport}>
@@ -1119,7 +1190,6 @@ export default function CascadeApp() {
                       {(
                         [
                           ["inbox", "Inbox", "open incidents waiting to be fixed"],
-                          ["history", "History", "past runs, and why each went the way it did"],
                           ["author", "Author", "create an incident the system has never seen"],
                         ] as [IncidentTab, string, string][]
                       ).map(([id, label, hint]) => (
@@ -1145,19 +1215,8 @@ export default function CascadeApp() {
                           refreshKey={refreshKey}
                           runningId={consoleRunning ? activeIncident : null}
                           locked={locked}
+                          only={tourReveal}
                           onRun={(input) => void handleTaskSubmit(input)}
-                        />
-                      </div>
-                    )}
-
-                    {incidentTab === "history" && (
-                      <div className={styles.tabPanel}>
-                        <RunHistory
-                          apiBase={API_BASE}
-                          refreshKey={refreshKey}
-                          selectedId={lastTaskId}
-                          locked={locked}
-                          onSelect={(id) => void openRun(id)}
                         />
                       </div>
                     )}
@@ -1180,6 +1239,24 @@ export default function CascadeApp() {
                       onViewEpisodes={handleViewEpisodes}
                     />
                   </div>
+                </div>
+              )}
+
+              {view === "history" && (
+                <div className={styles.full}>
+                  <RunHistory
+                    apiBase={API_BASE}
+                    refreshKey={refreshKey}
+                    selectedId={lastTaskId}
+                    locked={locked}
+                    onSelect={(id) => void openRun(id)}
+                  />
+                </div>
+              )}
+
+              {view === "architecture" && (
+                <div className={styles.full}>
+                  <ArchitecturePanel apiBase={API_BASE} refreshKey={refreshKey} />
                 </div>
               )}
 
@@ -1303,7 +1380,25 @@ export default function CascadeApp() {
         />
       )}
 
-      {tutorialOpen && <Tutorial onClose={() => setTutorialOpen(false)} />}
+      {tutorialOpen && (
+        <Tutorial
+          onStartTour={() => void startTour()}
+          onClose={() => setTutorialOpen(false)}
+        />
+      )}
+
+      {/* Last in the tree so its spotlight sits above the island and the
+          command palette — the two things a step may need to point at. */}
+      {tourStep !== null && (
+        <GuidedTour
+          steps={TOUR}
+          index={tourStep}
+          waiting={locked}
+          preparing={tourPreparing}
+          onAdvance={advanceTour}
+          onCancel={cancelTour}
+        />
+      )}
 
       {toast && <div className={styles.toast}>{toast}</div>}
 

@@ -98,6 +98,7 @@ def create_app() -> FastAPI:
     from app.routers import (
         admin,
         approvals,
+        architecture,
         copilot,
         events,
         intelligence,
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router,       prefix="/api", tags=["events"])
     app.include_router(approvals.router,    prefix="/api", tags=["approvals"])
     app.include_router(intelligence.router, prefix="/api", tags=["intelligence"])
+    app.include_router(architecture.router, prefix="/api", tags=["architecture"])
 
     # Internal bridge: Lambda → API SSE (no /api prefix)
     app.include_router(events.internal_router, tags=["internal"])

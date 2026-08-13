@@ -1,13 +1,15 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 500;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(8, 11, 13, 0.82);
-  backdrop-filter: blur(3px);
-  animation: fade 140ms ease-out;
+  padding: 24px;
+  background: rgba(6, 9, 11, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fade 200ms ease-out;
 }
 
 @keyframes fade {
@@ -17,147 +19,133 @@
 
 .card {
   position: relative;
-  width: 560px;
-  max-width: calc(100vw - 48px);
-  background-color: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 28px 32px 22px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  width: min(560px, 100%);
+  padding: 28px 30px 22px;
+  border-radius: 16px;
+  background: linear-gradient(
+    180deg,
+    rgba(40, 48, 54, 0.97) 0%,
+    rgba(22, 26, 30, 0.99) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 30px 70px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  animation: rise 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.skip {
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.close {
   position: absolute;
   top: 14px;
   right: 14px;
-  display: flex;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: none;
+  justify-content: center;
   border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-faint);
-  font-size: 12px;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
 }
 
-.skip:hover {
-  color: var(--text);
-  background-color: var(--surface-hover);
-}
+.close:hover { background: rgba(255, 255, 255, 0.14); color: var(--text); }
 
-.step {
-  font-size: 11px;
+.kicker {
+  font-size: 10.5px;
   font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--accent);
   margin-bottom: 10px;
 }
 
-.title {
-  margin: 0 0 14px;
-  font-size: 20px;
+.headline {
+  margin: 0 0 12px;
+  font-size: 21px;
+  line-height: 1.28;
   font-weight: 600;
-  line-height: 1.3;
   color: var(--text);
+  max-width: 26ch;
 }
 
-.body {
-  font-size: 14px;
+.lead {
+  margin: 0 0 22px;
+  font-size: 13.5px;
   line-height: 1.6;
   color: var(--text-dim);
-  /* Fixed floor so the card does not resize between screens — a modal that
-     jumps as you page through it reads as broken. */
-  min-height: 132px;
 }
 
-.body p {
-  margin: 0 0 12px;
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
 }
 
-.body p:last-child {
-  margin-bottom: 0;
+.primary,
+.secondary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 15px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
 }
 
-.body strong {
+.primary {
+  border: 1px solid var(--accent);
+  background: rgba(62, 207, 214, 0.12);
   color: var(--text);
+}
+
+.primary:hover { background: rgba(62, 207, 214, 0.2); }
+
+.secondary {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.secondary:hover { border-color: rgba(255, 255, 255, 0.24); }
+
+.primary svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.secondary svg { color: var(--text-faint); flex-shrink: 0; margin-top: 1px; }
+
+.choiceBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.choiceBody b {
+  font-size: 13.5px;
   font-weight: 600;
-}
-
-.body code,
-.body kbd {
-  font-family: var(--font-ibm-plex-mono), monospace;
-  font-size: 12px;
-  background-color: var(--raised);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 5px;
   color: var(--text);
 }
 
-.body kbd + kbd {
-  margin-left: 3px;
+.choiceBody em {
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-faint);
 }
 
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 22px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+.foot {
+  margin: 18px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-faint);
 }
 
-.dots {
-  display: flex;
-  gap: 6px;
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  padding: 0;
-  border-radius: 50%;
-  border: none;
-  background-color: var(--border-strong);
-  cursor: pointer;
-}
-
-.dotActive {
-  background-color: var(--accent);
-}
-
-.nav {
-  display: flex;
-  gap: 8px;
-}
-
-.back,
-.next {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 4px;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.back {
-  background: none;
-  border: 1px solid var(--border-strong);
-  color: var(--text-dim);
-}
-
-.back:hover {
-  color: var(--text);
-}
-
-.next {
-  background-color: var(--accent);
-  border: none;
-  color: var(--bg);
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .card { animation: none; }
 }

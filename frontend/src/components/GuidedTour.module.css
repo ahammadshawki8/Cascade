@@ -1,0 +1,250 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+
+/* The four panels around the hole. They dim and they block, which is the whole
+   point: a walkthrough you can wander out of ends with the viewer somewhere
+   confusing. */
+.shade,
+.shadeAll {
+  position: fixed;
+  background: rgba(6, 9, 11, 0.6);
+  pointer-events: auto;
+  transition: all 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.shadeAll {
+  inset: 0;
+}
+
+.ring {
+  position: fixed;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 4px rgba(62, 207, 214, 0.18),
+    0 0 26px rgba(62, 207, 214, 0.4);
+  pointer-events: none;
+  transition: all 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: ringPulse 2s ease-in-out infinite;
+}
+
+@keyframes ringPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 4px rgba(62, 207, 214, 0.16),
+      0 0 22px rgba(62, 207, 214, 0.32);
+  }
+  50% {
+    box-shadow:
+      0 0 0 7px rgba(62, 207, 214, 0.26),
+      0 0 34px rgba(62, 207, 214, 0.55);
+  }
+}
+
+/* --- the caption ---------------------------------------------------------- */
+
+.card {
+  position: fixed;
+  width: 340px;
+  pointer-events: auto;
+  background: linear-gradient(
+    180deg,
+    rgba(40, 48, 54, 0.96) 0%,
+    rgba(22, 26, 30, 0.98) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  overflow: hidden;
+  transition: top 220ms cubic-bezier(0.22, 1, 0.36, 1),
+              left 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: cardIn 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cardIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* A small pointer toward the hole, so the card is visibly *about* the ring
+   rather than floating near it. */
+.card::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: rgba(38, 45, 51, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transform: rotate(45deg);
+}
+
+.right::before { left: -6px; top: calc(50% - 5px); border-right: none; border-bottom: none; }
+.left::before  { right: -6px; top: calc(50% - 5px); border-left: none; border-top: none; }
+.below::before { top: -6px; left: calc(50% - 5px); border-right: none; border-bottom: none; }
+.above::before { bottom: -6px; left: calc(50% - 5px); border-left: none; border-top: none; }
+.centre::before { display: none; }
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px 8px;
+}
+
+.count {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: rgba(62, 207, 214, 0.12);
+  border: 1px solid rgba(62, 207, 214, 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.of { color: var(--text-faint); font-weight: 500; }
+
+.title {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.close {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.close:hover { background: rgba(255, 255, 255, 0.14); color: var(--text); }
+
+.body {
+  padding: 0 12px 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.body b { color: var(--text); font-weight: 600; }
+
+/* The mechanism, kept visually separate from the instruction: one is what to
+   do, the other is why the project exists. */
+.mechanism {
+  margin: 0 12px 11px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: rgba(62, 207, 214, 0.08);
+  border-left: 2px solid var(--accent);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.mechanism b { color: var(--accent); font-weight: 600; }
+
+.mechanism code {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 10.5px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 11px;
+}
+
+.spacer { flex: 1; }
+
+.doIt {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.spin { animation: spin 1s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.next:hover { filter: brightness(1.1); }
+
+.skip {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.skip:hover { color: var(--text-dim); }
+
+.progress {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring, .card, .shade, .shadeAll, .progressFill { animation: none; transition: none; }
+  .spin { animation: none; }
+}
+
+.para {
+  margin: 0 0 7px;
+}
+
+.para:last-child {
+  margin-bottom: 0;
+}

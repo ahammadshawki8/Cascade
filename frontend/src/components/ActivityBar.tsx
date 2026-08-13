@@ -14,12 +14,16 @@ import {
   Command,
   BookMarked,
   MoreHorizontal,
+  History,
+  Network,
 } from "lucide-react";
 
 export type ViewId =
   | "incidents"
+  | "history"
   | "runbooks"
   | "policy"
+  | "architecture"
   | "copilot"
   | "intelligence"
   | "approvals";
@@ -33,24 +37,35 @@ interface Item {
 
 export const VIEWS: Item[] = [
   { id: "incidents", label: "Incidents", hint: "Run and watch tasks", icon: Terminal },
+  { id: "history", label: "History", hint: "Past runs and why", icon: History },
   { id: "runbooks", label: "Runbooks", hint: "Learned procedures", icon: BookOpen },
   { id: "policy", label: "Policy", hint: "Rules and impact", icon: Shield },
+  {
+    id: "architecture",
+    label: "Architecture",
+    hint: "How it holds together",
+    icon: Network,
+  },
   { id: "copilot", label: "Copilot", hint: "Ask the database", icon: Sparkles },
   { id: "intelligence", label: "Intelligence", hint: "Savings, graph, memory", icon: Brain },
   { id: "approvals", label: "Approvals", hint: "Actions awaiting a human", icon: ShieldCheck },
 ];
 
 /**
- * Only these three carry the story: teach it, watch it reuse, change the rules.
+ * These five carry the story: run one, look at what happened, see what it
+ * learned, change the rules, and read how any of that is possible.
  *
- * Six equally-weighted destinations meant a first-time viewer had to choose
- * before knowing what any of them were, and the three that explain the project
- * were outnumbered by three that assume you already understand it. The rest
- * stay reachable behind "More" — and Approvals promotes itself the moment
- * something is actually waiting, because then it is the most important thing
- * on screen.
+ * The three left behind assume you already understand the project, so they
+ * stay under "More" — and Approvals promotes itself the moment something is
+ * genuinely waiting, because then it is the most important thing on screen.
  */
-const PRIMARY: ViewId[] = ["incidents", "runbooks", "policy"];
+const PRIMARY: ViewId[] = [
+  "incidents",
+  "history",
+  "runbooks",
+  "policy",
+  "architecture",
+];
 
 interface Props {
   active: ViewId;
@@ -103,6 +118,7 @@ export function ActivityBar({
               key={item.id}
               type="button"
               className={`${styles.item} ${isActive ? styles.itemActive : ""}`}
+              data-tour={`nav-${item.id}`}
               onClick={() => onSelect(item.id)}
               aria-current={isActive ? "page" : undefined}
               aria-label={item.label}

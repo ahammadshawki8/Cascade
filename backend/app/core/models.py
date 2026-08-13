@@ -280,6 +280,10 @@ class ImpactResult(BaseModel):
     impacted_playbooks: list[ImpactedPlaybook] = Field(default_factory=list)
     impacted_tasks: list[ImpactedTask] = Field(default_factory=list)
     committed: bool = False
+    # Set only on a real commit. The pair is the headline: the write set stays
+    # fixed while `impacted_playbooks` is free to be any length at all.
+    writes: int | None = None
+    duration_ms: int | None = None
 
 
 # ---------------------------------------------------------------------------

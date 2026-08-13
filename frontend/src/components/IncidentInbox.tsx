@@ -54,6 +54,7 @@ export function IncidentInbox({
   refreshKey,
   runningId,
   locked = false,
+  only = null,
   onRun,
 }: {
   apiBase: string;
@@ -61,6 +62,11 @@ export function IncidentInbox({
   runningId?: string | null;
   /** Work is already in flight; starting more would interleave with it. */
   locked?: boolean;
+  /**
+   * Restrict the list to these ids. The walkthrough shows one incident at a
+   * time so there is never a wrong thing to click; `null` means show them all.
+   */
+  only?: string[] | null;
   onRun: (input: string) => void;
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -88,7 +94,9 @@ export function IncidentInbox({
     };
   }, [apiBase, refreshKey]);
 
-  const open = incidents.filter((i) => i.state !== "resolved");
+  const open = incidents
+    .filter((i) => i.state !== "resolved")
+    .filter((i) => only === null || only.includes(i.incident_id));
 
   return (
     <div className={styles.inbox}>
@@ -107,7 +115,9 @@ export function IncidentInbox({
       {loading && <div className={styles.empty}>Loading incidents…</div>}
       {!loading && open.length === 0 && (
         <div className={styles.empty}>
-          No open incidents. Reset the demo world to bring them back.
+          {only !== null && only.length === 0
+            ? "The walkthrough is looking at something else right now."
+            : "No open incidents. Reset the demo world to bring them back."}
         </div>
       )}
 
@@ -122,6 +132,7 @@ export function IncidentInbox({
           return (
             <div
               key={inc.incident_id}
+              data-tour={`incident-${inc.incident_id}`}
               className={`${styles.card} ${running ? styles.cardRunning : ""}`}
             >
               <div className={styles.top}>
@@ -169,6 +180,7 @@ export function IncidentInbox({
 
               <button
                 className={styles.run}
+                data-tour={`fix-${inc.incident_id}`}
                 disabled={running || locked}
                 title={locked && !running ? "Waiting for the current work to finish" : undefined}
                 onClick={() => onRun(`Remediate ${inc.incident_id}`)}

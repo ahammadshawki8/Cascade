@@ -307,7 +307,7 @@ function Evidence({
   if (stale.length === 0 && failed.length === 0) return null;
 
   return (
-    <div className={styles.evidence}>
+    <div className={styles.evidence} data-tour="evidence">
       {stale.length > 0 && (
         <>
           <div className={styles.evidenceTitle}>
@@ -528,7 +528,7 @@ function Cost({
 }) {
   if (relearn) {
     return (
-      <div className={styles.cost}>
+      <div className={styles.cost} data-tour="cost">
         <span className={styles.costText}>
           A re-learn deliberately pays full cold-path cost once, so that every run
           after it can skip the planner again.
@@ -548,7 +548,7 @@ function Cost({
 
   if (running) {
     return (
-      <div className={styles.cost}>
+      <div className={styles.cost} data-tour="cost">
         <span className={styles.costBig}>{steps.length}</span>
         <span className={styles.costText}>
           {mode === null
@@ -573,7 +573,7 @@ function Cost({
 
   if (guided) {
     return (
-      <div className={styles.cost}>
+      <div className={styles.cost} data-tour="cost">
         <span className={styles.costBig}>{count}</span>
         <span className={styles.costText}>
           of {count} steps skipped thinking — the planner was not called once.
@@ -591,7 +591,7 @@ function Cost({
   }
 
   return (
-    <div className={styles.cost}>
+    <div className={styles.cost} data-tour="cost">
       <span className={styles.costBig}>0</span>
       <span className={styles.costText}>
         of {count} steps skipped thinking — this run had nothing to reuse, so the model

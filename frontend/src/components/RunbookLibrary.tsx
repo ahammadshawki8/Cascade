@@ -144,7 +144,7 @@ export function RunbookLibrary({
           const statusClass = getStatusClass(pb.status_cache);
 
           return (
-            <div key={pb.playbook_id} className={styles.card}>
+            <div key={pb.playbook_id} className={styles.card} data-tour="runbook-card">
               <div 
                 className={styles.cardHeader} 
                 onClick={() => toggleExpand(pb.playbook_id)}
@@ -206,6 +206,7 @@ export function RunbookLibrary({
                       rebuild it under current policy as v{pb.version + 1}.
                     </span>
                     <button
+                      data-tour="relearn"
                       className={styles.quarantineBtn}
                       disabled={busyId === pb.playbook_id}
                       onClick={async (e) => {
@@ -268,6 +269,7 @@ export function RunbookLibrary({
                       pb.status_cache === "suspect") &&
                       onRelearn && (
                         <button
+                          data-tour="relearn"
                           className={`${styles.actionBtn} ${styles.actionBtnPrimary}`}
                           disabled={busyId === pb.playbook_id}
                           onClick={async (e) => {
@@ -304,3 +306,4 @@ export function RunbookLibrary({
     </div>
   );
 }
+
