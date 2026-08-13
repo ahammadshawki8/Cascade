@@ -248,6 +248,7 @@ directly in the git repo (`Desktop/Coackroach/cockroach`, remote
 │   ├── worker/handler.py · jobs.py    6 job kinds
 │   ├── migrations/                    001 schema · 002 seed
 │   │                                  003 extensions · 004 production
+│   │                                  005 step detail
 │   ├── verify_integration.py          81 assertions
 │   ├── run_local.py                   Windows selector-loop launcher
 │   ├── Dockerfile · pyproject.toml
@@ -526,7 +527,7 @@ against a non-https URL.
 ```bash
 cd infra
 ./01_ccloud_provision.sh     # CockroachDB Cloud
-./02_migrate.sh              # 001 → 004, vector index
+./02_migrate.sh              # 001 -> 005, vector index
 
 ./03_aws_bootstrap.sh        # S3, SQS, Secrets Manager, IAM, ECR
 
@@ -581,12 +582,12 @@ docker start cascade-crdb     # or: docker run -d --name cascade-crdb \
                               #   cockroachdb/cockroach:latest start-single-node --insecure
 
 # 2. Migrations (all four, in order)
-for f in 001_schema 002_seed 003_extensions 004_production; do
+for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail; do
   docker cp backend/migrations/$f*.sql cascade-crdb:/tmp/$f.sql
 done
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
-for f in 001 002 003 004; do
+for f in 001 002 003 004 005; do
   docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=//tmp/$f.sql
 done
 

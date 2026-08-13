@@ -6,14 +6,13 @@ import { ActivityBar, ViewId, VIEWS } from "../components/ActivityBar";
 import { StatusBar } from "../components/StatusBar";
 import { CommandPalette, Command } from "../components/CommandPalette";
 import { MetricBar } from "../components/MetricBar";
-import { IncidentConsole, StepEvent, TaskHistoryItem } from "../components/IncidentConsole";
 import { RunbookLibrary, Playbook } from "../components/RunbookLibrary";
 import { PolicyPanel, Rule, ImpactResult } from "../components/PolicyPanel";
 import { OpsCopilot, CopilotAnswer } from "../components/OpsCopilot";
 import { RightRail, ApprovalRequest, Insight } from "../components/RightRail";
 import { IntelligencePanel } from "../components/IntelligencePanel";
-import { DecisionPanel } from "../components/DecisionPanel";
 import { IncidentComposer } from "../components/IncidentComposer";
+import type { Explanation, RelearnState, StepEvent } from "../components/runTypes";
 import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
@@ -90,14 +89,20 @@ export default function CascadeApp() {
   const [incidentTab, setIncidentTab] = useState<IncidentTab>("inbox");
   /** A one-off line for the island to announce. */
   const [announce, setAnnounce] = useState<string | null>(null);
-  /** The run the Why tab explains — the most recent one to reach a verdict. */
+  /** Whichever run the island is currently describing. */
   const [lastTaskId, setLastTaskId] = useState<string | null>(null);
-  /** Shared by the decision map and the narrator line. */
-  const [explanation, setExplanation] = useState<any>(null);
+  /** Shared by the decision map, the narrator line and the cost footer. */
+  const [explanation, setExplanation] = useState<Explanation | null>(null);
   const [activeIncident, setActiveIncident] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
   const [relearningId, setRelearningId] = useState<string | null>(null);
   const [progressDismissed, setProgressDismissed] = useState(false);
+  /** Live phase of a re-learn, streamed by the worker. */
+  const [relearn, setRelearn] = useState<RelearnState | null>(null);
+  /** The island is showing a past run rather than the one happening now. */
+  const [reviewing, setReviewing] = useState(false);
+  /** Bumped when the user asks to see detail; the island opens on it. */
+  const [islandOpen, setIslandOpen] = useState(0);
   /** Act progression is derived from what actually happened, never stored. */
   const [guidedRunHappened, setGuidedRunHappened] = useState(false);
   const [policyChanged, setPolicyChanged] = useState(false);
@@ -108,14 +113,11 @@ export default function CascadeApp() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [connected, setConnected] = useState(false);
 
-  const [consoleInput, setConsoleInput] = useState("");
   const [consoleRunning, setConsoleRunning] = useState(false);
   const [consoleMode, setConsoleMode] = useState<"explore" | "guided" | undefined>();
   const [activePlaybookName, setActivePlaybookName] = useState("");
   const [activePlaybookVersion, setActivePlaybookVersion] = useState(0);
   const [consoleSteps, setConsoleSteps] = useState<StepEvent[]>([]);
-  const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
-  const [consoleInterrupted, setConsoleInterrupted] = useState(false);
   /**
    * One thing at a time.
    *
@@ -126,14 +128,36 @@ export default function CascadeApp() {
    * making every one of those paths concurrency-safe, the UI refuses to start
    * overlapping work and says why.
    */
+  //
+  // A re-learn also counts, whoever started it: the cascade queues one on its
+  // own when a rule moves, and it rewrites the very runbook the next run would
+  // retrieve.
+  const relearnInFlight =
+    relearn != null &&
+    !["done", "rejected", "deferred", "failed"].includes(relearn.phase);
   const busyLabel = consoleRunning
     ? null
     : compiling
       ? "Compiling the runbook from that run"
-      : relearningId
+      : relearningId || relearnInFlight
         ? "Re-learning a quarantined runbook"
         : null;
-  const locked = consoleRunning || compiling || Boolean(relearningId);
+  const locked =
+    consoleRunning || compiling || Boolean(relearningId) || relearnInFlight;
+
+  /**
+   * The island is the only live surface, so anything that lands in it has to
+   * displace what was there. Clearing first keeps a past run's steps from
+   * appearing underneath a new one's decision.
+   */
+  const clearIsland = useCallback(() => {
+    setExplanation(null);
+    setConsoleSteps([]);
+    setConsoleMode(undefined);
+    setActivePlaybookName("");
+    setActivePlaybookVersion(0);
+    setProgressDismissed(false);
+  }, []);
 
   const [copilotAnswer, setCopilotAnswer] = useState<CopilotAnswer | null>(null);
   const [copilotLoading, setCopilotLoading] = useState(false);
@@ -276,6 +300,31 @@ export default function CascadeApp() {
       fetchMetrics();
       setRefreshKey((k) => k + 1);
     });
+
+    /**
+     * Re-learning is four things behind one button, and it used to be a
+     * spinner. The worker now narrates each phase, including the ones that end
+     * without a new version — which is a legitimate outcome and used to be
+     * indistinguishable from the button not having worked.
+     */
+    es.addEventListener("playbook.relearn", (e) => {
+      try {
+        const d = JSON.parse((e as MessageEvent).data);
+        setRelearn((prev) => ({
+          ...(prev?.playbookId === d.playbook_id ? prev : { playbookId: d.playbook_id }),
+          playbookId: d.playbook_id,
+          phase: d.phase,
+          ...(d.name && d.phase !== "done" ? { name: d.name } : {}),
+          ...(d.version != null && d.phase !== "done" ? { version: d.version } : {}),
+          ...(d.stale_rules ? { staleRules: d.stale_rules } : {}),
+          ...(d.task_id ? { taskId: d.task_id } : {}),
+          ...(d.task_text ? { taskText: d.task_text } : {}),
+          ...(d.result !== undefined ? { result: d.result } : {}),
+          ...(d.phase === "done" ? { newName: d.name, newVersion: d.version } : {}),
+          ...(d.reason ? { reason: d.reason } : {}),
+        }));
+      } catch {}
+    });
     es.addEventListener("approval.requested", (e) => {
       try {
         const data = JSON.parse((e as MessageEvent).data);
@@ -325,6 +374,40 @@ export default function CascadeApp() {
       sseRef.current = null;
     };
   }, [refreshAll, fetchMetrics, fetchPlaybooks, fetchRules, fetchApprovals, fetchInsights]);
+
+  /**
+   * The re-learn's own run is a real task, so its steps arrive on the ordinary
+   * per-task topic. Attached separately from a user-submitted run on purpose:
+   * its terminal status must not load a decision panel for an incident nobody
+   * asked about, but its steps are exactly what makes the re-learn watchable.
+   */
+  useEffect(() => {
+    const es = sseRef.current;
+    const taskId = relearn?.taskId;
+    if (!es || !taskId) return;
+
+    setConsoleSteps([]);
+    const onStep = ((e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type !== "step") return;
+        setConsoleSteps((prev) => [
+          ...prev,
+          {
+            id: `${taskId}-${data.step_index ?? prev.length}`,
+            tool: data.tool,
+            args: data.args ?? {},
+            output: data.output,
+            duration_ms: data.duration_ms,
+            error: Boolean(data.error),
+          },
+        ]);
+      } catch {}
+    }) as EventListener;
+
+    es.addEventListener(`task.${taskId}.step`, onStep);
+    return () => es.removeEventListener(`task.${taskId}.step`, onStep);
+  }, [relearn?.taskId]);
 
   useEffect(() => {
     localStorage.setItem(GUIDE_KEY, JSON.stringify({ dismissed: !tourVisible }));
@@ -385,6 +468,13 @@ export default function CascadeApp() {
           await fetchPlaybooks();
           if (playbookCountRef.current > before) {
             setAnnounce("A runbook was compiled from that run. The next matching incident can reuse it.");
+            // Re-read the verdict now that the compile has landed. The first
+            // read happened seconds too early to know what this run became,
+            // and the panel would otherwise keep saying nothing was saved.
+            try {
+              const fresh = await fetch(`${API_BASE}/tasks/${taskId}/explain`);
+              if (fresh.ok) setExplanation(await fresh.json());
+            } catch {}
             break;
           }
         }
@@ -394,12 +484,11 @@ export default function CascadeApp() {
       const reason = data?.decision?.reason;
       if (reason === "reused") setGuidedRunHappened(true);
 
+      // No tab switch: the evidence is in the island, where the run already is.
       if (reason === "refused_stale") {
         setToast("A matching runbook was refused: policy moved since it was compiled.");
-        setIncidentTab("history");
       } else if (reason === "refused_precondition") {
         setToast("A matching runbook was refused: its preconditions do not hold here.");
-        setIncidentTab("history");
       }
     } catch {}
   }, [fetchPlaybooks]);
@@ -420,7 +509,9 @@ export default function CascadeApp() {
         try {
           const data = JSON.parse(e.data);
           if (data.type === "interrupted") {
-            setConsoleInterrupted(true);
+            setAnnounce(
+              `This run was interrupted mid-flight: ${data.reason ?? "a rule changed"}.`
+            );
             return;
           }
           setConsoleSteps((prev) => [
@@ -429,6 +520,10 @@ export default function CascadeApp() {
               id: `${taskId}-${data.step_index ?? prev.length}`,
               tool: data.tool,
               args: data.args ?? {},
+              // The tool's own return value. Without it a step can only say
+              // what was asked, never what came back — which is where the
+              // policy verdict and the rule versions behind it live.
+              output: data.output,
               duration_ms: data.duration_ms,
               error: Boolean(data.error),
             },
@@ -457,19 +552,13 @@ export default function CascadeApp() {
 
           if (["succeeded", "failed", "interrupted"].includes(data.status)) {
             setConsoleRunning(false);
-            if (data.status === "interrupted") setConsoleInterrupted(true);
+            if (data.status === "interrupted") {
+              setAnnounce(
+                "That run was interrupted: a rule changed while it was still going."
+              );
+            }
             setLastTaskId(taskId);
             void announceDecision(taskId);
-            setTaskHistory((prev) => [
-              {
-                id: `${taskId}-${Date.now()}`,
-                time: clockTime(),
-                input: data.input ?? input,
-                outcome:
-                  data.status === "succeeded" ? data.result ?? "remediated" : data.status,
-              },
-              ...prev,
-            ]);
             refreshAll();
           }
         } catch {}
@@ -491,21 +580,11 @@ export default function CascadeApp() {
       // No tab switch: the run itself now lives in the floating island, which
       // is visible from wherever you are. Yanking the view around would move
       // the page out from under someone mid-click.
-      setExplanation(null);
-      // Closing the progress window should not silence the *next* run — the
-      // user just asked for that one.
-      setProgressDismissed(false);
-      // Keep the command box showing the run in progress. Launching from a
-      // card left the previous incident's text sitting there, which reads as
-      // though the wrong thing is running.
-      setConsoleInput(input);
+      clearIsland();
+      setRelearn(null);
+      setReviewing(false);
       setActiveIncident((input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase() ?? input);
       setConsoleRunning(true);
-      setConsoleSteps([]);
-      setConsoleInterrupted(false);
-      setConsoleMode(undefined);
-      setActivePlaybookName("");
-      setActivePlaybookVersion(0);
 
       try {
         const res = await fetch(`${API_BASE}/tasks`, {
@@ -527,7 +606,69 @@ export default function CascadeApp() {
         return null;
       }
     },
-    [attachTaskListeners]
+    [attachTaskListeners, clearIsland]
+  );
+
+  /**
+   * Open a finished run in the island.
+   *
+   * A past run and a run that has just finished are the same object, so they
+   * get the same panel. Anything else would teach a viewer that there are two
+   * kinds of explanation, and leave the weaker one attached to history.
+   */
+  const openRun = useCallback(
+    async (taskId: string) => {
+      clearIsland();
+      setRelearn(null);
+      setReviewing(true);
+      setConsoleRunning(false);
+      setLastTaskId(taskId);
+      setIslandOpen((k) => k + 1);
+
+      try {
+        const [explainRes, stepsRes] = await Promise.all([
+          fetch(`${API_BASE}/tasks/${taskId}/explain`),
+          fetch(`${API_BASE}/tasks/${taskId}/steps`),
+        ]);
+
+        if (explainRes.ok) {
+          const data: Explanation = await explainRes.json();
+          setExplanation(data);
+          setConsoleMode(data.mode ?? undefined);
+          setActiveIncident(
+            data.incident?.incident_id ??
+              (data.input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase() ??
+              data.input
+          );
+          if (data.playbook) {
+            setActivePlaybookName(data.playbook.name);
+            setActivePlaybookVersion(data.playbook.version);
+          }
+        }
+
+        if (stepsRes.ok) {
+          const data = await stepsRes.json();
+          setConsoleSteps(
+            (data.steps ?? []).map((s: any, i: number) => ({
+              id: `${taskId}-${s.step_index ?? i}`,
+              tool: s.tool,
+              args: s.args ?? {},
+              output: s.output,
+              duration_ms: s.duration_ms,
+              error: Boolean(s.error),
+            }))
+          );
+          if (data.retained === false && (data.recorded_steps ?? 0) > 0) {
+            setToast(
+              `That run took ${data.recorded_steps} steps, but it finished before step detail was kept.`
+            );
+          }
+        }
+      } catch {
+        setToast("Could not load that run.");
+      }
+    },
+    [clearIsland]
   );
 
   // ------------------------------------------------------------------ actions
@@ -540,21 +681,17 @@ export default function CascadeApp() {
       setToast("Reset failed — is the API running?");
     }
     detachTaskListeners();
-    setConsoleInput("");
-    setConsoleSteps([]);
-    setTaskHistory([]);
-    setConsoleMode(undefined);
-    setActivePlaybookName("");
-    setActivePlaybookVersion(0);
-    setConsoleInterrupted(false);
+    clearIsland();
     setApprovals([]);
     setInsights([]);
     setCopilotAnswer(null);
     setTourVisible(true);
     setGuidedRunHappened(false);
     setPolicyChanged(false);
-    setExplanation(null);
     setActiveIncident(null);
+    setLastTaskId(null);
+    setRelearn(null);
+    setReviewing(false);
     refreshAll();
   };
 
@@ -626,13 +763,44 @@ export default function CascadeApp() {
    * what is happening until it does.
    */
   const handleRelearn = async (playbookId: string) => {
+    // The user pressed a button and is owed the answer to "what is it doing",
+    // so this one does open the panel. An announcement would be the wrong
+    // shape: nothing has happened yet, it is about to take a minute.
+    clearIsland();
+    setReviewing(false);
+    setActiveIncident(null);
+    setRelearn({
+      playbookId,
+      phase: "queued",
+      name: playbooksRef.current.find((p) => p.playbook_id === playbookId)?.name,
+      version: playbooksRef.current.find((p) => p.playbook_id === playbookId)?.version,
+    });
+    setIslandOpen((k) => k + 1);
+
     try {
       const res = await fetch(`${PRIVILEGED}/playbooks/${playbookId}/relearn`, {
         method: "POST",
       });
-      setToast((await res.json()).message ?? "Re-learn queued.");
+      const body = await res.json();
+      setToast(body.message ?? "Re-learn queued.");
+      // "Not queued" covers two opposite outcomes. One of them — the cascade
+      // already started this re-learn on its own — is progress, and reporting
+      // it as a refusal claimed the feature had failed at the exact moment it
+      // was working without being asked.
+      if (body.state === "superseded") {
+        const succ = playbooksRef.current.find((pb) => pb.supersedes === playbookId);
+        setRelearn((prev) => ({
+          ...(prev ?? { playbookId }),
+          playbookId,
+          phase: "done",
+          newName: succ?.name,
+          newVersion: succ?.version,
+        }));
+        return;
+      }
     } catch {
       setToast("Could not queue the re-learn.");
+      setRelearn(null);
       return;
     }
 
@@ -651,17 +819,22 @@ export default function CascadeApp() {
     }
     setRelearningId(null);
 
-    // A re-learn can legitimately produce nothing. If the incident now
-    // escalates, the run short-circuits before consulting policy, so there are
-    // no rule citations to corroborate and the compiler refuses to store a
-    // runbook whose provenance it cannot verify. That is the right call, but
-    // it used to be completely silent — the spinner stopped and the runbook
-    // was still quarantined, which reads as the feature being broken.
+    // A re-learn can legitimately produce nothing, and the worker says which
+    // of the three reasons applies. The only case left to cover here is the
+    // one where no phase ever arrived — a lost event, or a worker that never
+    // picked the job up — because silence is the one outcome that reads as the
+    // button not having worked.
     if (!successor) {
-      setToast(
-        "Re-learn produced no new version: the re-solved run did not consult " +
-          "enough policy to ground a replacement at least as well as the " +
-          "current one. The runbook stays quarantined."
+      setRelearn((prev) =>
+        prev && !["done", "rejected", "deferred", "failed"].includes(prev.phase)
+          ? {
+              ...prev,
+              phase: "failed",
+              reason:
+                "The worker did not report back within 90 seconds. The runbook " +
+                "stays quarantined.",
+            }
+          : prev
       );
     }
     refreshAll();
@@ -983,11 +1156,8 @@ export default function CascadeApp() {
                           apiBase={API_BASE}
                           refreshKey={refreshKey}
                           selectedId={lastTaskId}
-                          onSelect={setLastTaskId}
-                          onOpenPolicy={(key) => {
-                            setHighlightRule(key);
-                            setView("policy");
-                          }}
+                          locked={locked}
+                          onSelect={(id) => void openRun(id)}
                         />
                       </div>
                     )}
@@ -1095,13 +1265,26 @@ export default function CascadeApp() {
         onClose={() => setPaletteOpen(false)}
       />
 
-      {(activeIncident || busyLabel) && !progressDismissed && (
+      {(activeIncident || busyLabel || relearn) && !progressDismissed && (
         <RunProgress
           running={consoleRunning}
           steps={consoleSteps}
+          mode={consoleMode}
+          explanation={explanation}
+          relearn={relearn}
           announce={announce}
           busyLabel={busyLabel}
-          onDismiss={() => setProgressDismissed(true)}
+          compiling={compiling}
+          openSignal={islandOpen}
+          reviewing={reviewing}
+          onOpenPolicy={(key) => {
+            setHighlightRule(key);
+            setView("policy");
+          }}
+          onDismiss={() => {
+            setProgressDismissed(true);
+            setRelearn(null);
+          }}
           model={buildMapModel({
             incident: activeIncident,
             running: consoleRunning,

@@ -80,23 +80,23 @@ docker run -d --name cascade-crdb \
   cockroachdb/cockroach:latest start-single-node --insecure
 ```
 
-### 2. Apply the four migrations, in order
+### 2. Apply the five migrations, in order
 
 `001` creates the schema and the vector index, `002` seeds policy and twelve
 demo incidents, `003` adds negative memory, `004` adds retention and merge
-lineage.
+lineage, `005` retains the step detail behind each run.
 
 ```bash
 cd backend
 
-for f in 001_schema 002_seed 003_extensions 004_production; do
+for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail; do
   docker cp migrations/$f*.sql cascade-crdb:/tmp/$f.sql
 done
 
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
 
-for f in 001 002 003 004; do
+for f in 001 002 003 004 005; do
   docker exec cascade-crdb ./cockroach sql --insecure \
     --database=cascade --file=//tmp/$f.sql
 done
@@ -490,7 +490,8 @@ backend/
       fanout.py, generalize.py
     routers/               9 routers
   worker/                  6 job kinds
-  migrations/              001 schema, 002 seed, 003 extensions, 004 production
+  migrations/              001 schema, 002 seed, 003 extensions, 004 production,
+                           005 step detail
   verify_integration.py    81 assertions
   run_local.py             Windows selector-loop launcher
 

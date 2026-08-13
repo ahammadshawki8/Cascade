@@ -824,6 +824,21 @@ async def _write_episode(
             s3_key,
         ),
     )
+
+    # What the run actually did, kept so the history can replay it call by call
+    # rather than only naming the gate that decided it.
+    #
+    # A separate statement, and never allowed to fail the task: a database that
+    # has not taken migration 005 has no column to write to, and losing step
+    # detail is not a reason to lose the run.
+    try:
+        await db.q(
+            "UPDATE episodes SET trajectory = %s WHERE episode_id = %s",
+            (json.dumps(trajectory, default=str), str(episode_id)),
+        )
+    except Exception as exc:
+        log.warning("episode %s: step detail not retained (%s)", episode_id, exc)
+
     return episode_id
 
 

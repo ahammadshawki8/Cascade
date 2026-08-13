@@ -16,41 +16,84 @@ export interface Narration {
 
 const asStr = (v: unknown): string => (v == null ? "" : String(v));
 
-export function narrate(tool: string, args: Record<string, unknown>): Narration {
+const isBag = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * `output` is the tool's own return value, when we have it.
+ *
+ * With it the answer can be what actually came back rather than what the call
+ * was about — "No: the deploy was 30.2h ago, outside the 4h window" instead of
+ * "Checking this incident against policy". That single line is usually enough
+ * to see where a run deviated without opening anything.
+ */
+export function narrate(
+  tool: string,
+  args: Record<string, unknown>,
+  output?: unknown
+): Narration {
   const incident = asStr(args.incident_id);
   const action = asStr(args.action);
+  const out = isBag(output) ? output : null;
+
+  if (out?.error) {
+    return {
+      question: tool.replace(/_/g, " "),
+      answer: `Failed: ${asStr(out.error)}`,
+    };
+  }
 
   switch (tool) {
     case "get_incident":
       return {
         question: "What happened?",
-        answer: incident ? `Reading the report for ${incident}` : "Reading the incident report",
+        answer: out
+          ? [asStr(out.kind).replace(/_/g, " "), `${asStr(out.service_name)}`,
+             `tier ${asStr(out.service_tier)}`, asStr(out.state)]
+              .filter(Boolean)
+              .join(" · ")
+          : incident
+            ? `Reading the report for ${incident}`
+            : "Reading the incident report",
       };
 
     case "get_rules":
       return {
         question: "What are the current rules?",
-        answer: "Fetching company policy, at its latest version",
+        answer: Array.isArray(out?.rules)
+          ? `${out.rules.length} rules, each at its head version`
+          : "Fetching company policy, at its latest version",
       };
 
-    case "check_remediation_eligibility":
+    case "check_remediation_eligibility": {
+      const question = action ? `Am I allowed to ${verb(action)}?` : "Am I allowed to act?";
+      if (!out) return { question, answer: "Checking this incident against policy" };
+      if (out.eligible === true) return { question, answer: "Yes, policy permits it" };
+      const reasons = Array.isArray(out.reasons) ? out.reasons.map(asStr) : [];
       return {
-        question: action ? `Am I allowed to ${verb(action)}?` : "Am I allowed to act?",
-        answer: "Checking this incident against policy",
+        question,
+        answer: reasons.length ? `No: ${reasons[0]}` : "No, policy refuses it",
       };
+    }
 
     case "apply_remediation":
       return {
         question: action ? `${Verb(action)}` : "Applying the fix",
-        answer: incident ? `Acting on ${incident}` : "",
+        answer: out
+          ? out.note === "idempotent_replay"
+            ? "Already applied, so nothing happened twice"
+            : `Done, ${incident || "the incident"} is now ${asStr(out.incident_state) || "handled"}`
+          : incident
+            ? `Acting on ${incident}`
+            : "",
       };
 
     case "notify_oncall":
       return {
         question: "Telling the on-call engineer",
         // The message is the interesting part and it is long, so it is left to
-        // the raw view rather than truncated into something misleading.
-        answer: "Sending a summary of what was done and why",
+        // the step detail rather than truncated into something misleading.
+        answer: out ? "Sent" : "Sending a summary of what was done and why",
       };
 
     default:

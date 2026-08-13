@@ -343,6 +343,68 @@ async def explain_task(task_id: UUID):
     }
 
 
+@router.get("/tasks/{task_id}/steps")
+async def task_steps(task_id: UUID):
+    """What the run did, call by call.
+
+    The live stream carries this over SSE while a task runs, and then it is
+    gone. Anyone opening a past run gets the same shape from here, so the UI
+    has one renderer rather than a live view and a lesser historical one.
+
+    `retained: false` means the episode predates migration 005 (or the database
+    has not taken it), not that the run did nothing. Saying which is which
+    matters — an empty list would otherwise read as a run that made no calls.
+    """
+    if _stub_mode():
+        raise HTTPException(400, "steps require CASCADE_STUB_MODE=false")
+
+    from app.db import one
+
+    try:
+        row = await one(
+            "SELECT mode, steps, trajectory FROM episodes WHERE task_id = %s",
+            (str(task_id),),
+        )
+    except Exception as exc:
+        log.warning("step detail unavailable for %s: %s", task_id, exc)
+        return {"task_id": str(task_id), "retained": False, "steps": []}
+
+    if row is None:
+        # No episode: the run never executed a tool, or is still going.
+        return {"task_id": str(task_id), "retained": True, "steps": []}
+
+    trajectory = row.get("trajectory") or []
+    if not trajectory:
+        return {
+            "task_id": str(task_id),
+            "mode": row["mode"],
+            "retained": False,
+            "recorded_steps": row["steps"],
+            "steps": [],
+        }
+
+    steps = []
+    for entry in trajectory:
+        output = entry.get("tool_output")
+        steps.append(
+            {
+                "step_index": entry.get("step_index"),
+                "tool": entry.get("tool_name"),
+                "args": entry.get("tool_input") or {},
+                "output": output,
+                "duration_ms": entry.get("latency_ms"),
+                "error": output.get("error") if isinstance(output, dict) else None,
+            }
+        )
+
+    return {
+        "task_id": str(task_id),
+        "mode": row["mode"],
+        "retained": True,
+        "steps": steps,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Background execution
 # ---------------------------------------------------------------------------

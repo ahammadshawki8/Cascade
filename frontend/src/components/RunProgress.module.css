@@ -10,7 +10,10 @@
   bottom: 42px;
   transform: translateX(-50%);
   z-index: 120;
-  width: min(820px, calc(100vw - 96px));
+  width: min(860px, calc(100vw - 96px));
+  max-height: calc(100vh - 130px);
+  display: flex;
+  flex-direction: column;
 
   background: linear-gradient(
     180deg,
@@ -41,6 +44,7 @@
   gap: 10px;
   padding: 9px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
 }
 
 .title {
@@ -53,6 +57,17 @@
 .stage {
   font-size: 12px;
   color: var(--text-dim);
+}
+
+.pastTag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 .spacer { flex: 1; }
@@ -77,11 +92,20 @@
 
 .iconBtn:disabled { opacity: 0.35; cursor: default; }
 
+/* One scroll region for the whole body: the panel can now hold a map, the
+   refusal evidence and every step, and three independently scrolling areas
+   inside one floating window is unusable. */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* The map paints its own chrome for the tab layout; inside glass it has to be
    transparent or the effect is covered by a solid rectangle. */
 .window :global(svg) { background: transparent; }
 
-.window > div:nth-child(2) {
+.body > div:first-child {
   background: transparent !important;
   border-bottom: none !important;
 }
@@ -210,26 +234,194 @@
   color: var(--text);
   background: rgba(62, 207, 214, 0.12);
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+/* --- refusal evidence ----------------------------------------------------- */
+
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 14px 12px;
+}
+
+.evidenceTitle {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+.staleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  cursor: pointer;
+}
+
+.staleRow:hover { border-color: rgba(255, 255, 255, 0.2); }
+
+.ruleKey { color: var(--text); flex: 1; }
+.versionOld { color: var(--st-invalid); text-decoration: line-through; }
+.versionNew { color: var(--st-active); }
+
+.failedRow {
+  background: rgba(230, 168, 74, 0.1);
+  border: 1px solid rgba(230, 168, 74, 0.22);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* --- re-learn ------------------------------------------------------------- */
+
+.relearn {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 13px 14px 4px;
+}
+
+.relearnLead {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.relearn .evidence { padding: 0; }
+
+.phases {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.phase {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  grid-template-areas: "m l" ". n" ". p";
+  column-gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  opacity: 0.5;
+}
+
+.phaseDone, .phaseActive, .phaseFailed { opacity: 1; }
+
+.phaseActive {
+  background: rgba(62, 207, 214, 0.09);
+  border-color: rgba(62, 207, 214, 0.25);
+}
+
+.phaseFailed {
+  background: rgba(230, 168, 74, 0.09);
+  border-color: rgba(230, 168, 74, 0.25);
+}
+
+.phaseMark {
+  grid-area: m;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.phaseDone .phaseMark { color: var(--st-active); }
+.phaseActive .phaseMark { color: var(--accent); }
+.phaseFailed .phaseMark { color: var(--st-suspect); }
+
+.phaseLabel {
+  grid-area: l;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.phaseNote {
+  grid-area: n;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.phasePick {
+  grid-area: p;
+  margin-top: 5px;
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+.relearnGood {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: rgba(62, 207, 214, 0.12);
+  border: 1px solid rgba(62, 207, 214, 0.25);
+}
+
+.relearnStop {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: rgba(230, 168, 74, 0.1);
+  border: 1px solid rgba(230, 168, 74, 0.25);
+}
+
+.relearnStopNote {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
 }
 
 /* --- steps, inside the island -------------------------------------------- */
 
 .stream {
-  max-height: 220px;
-  overflow-y: auto;
   padding: 8px 14px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 2px;
 }
 
-.step {
-  display: grid;
-  grid-template-columns: 22px 1fr auto;
-  grid-template-areas: "n q ms" ". a .";
-  column-gap: 9px;
-  font-size: 12px;
+.streamTitle {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.stepWrap {
+  display: flex;
+  flex-direction: column;
   animation: stepIn 140ms ease-out;
 }
 
@@ -237,6 +429,35 @@
   from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+.step {
+  display: grid;
+  grid-template-columns: 14px 22px 1fr auto;
+  grid-template-areas: "c n q ms" ". . a .";
+  column-gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 12px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.step:hover { background: rgba(255, 255, 255, 0.05); }
+.stepOpen { background: rgba(255, 255, 255, 0.06); }
+
+.stepChevron {
+  grid-area: c;
+  display: inline-flex;
+  color: var(--text-faint);
+  transition: transform 140ms ease-out;
+}
+
+.stepOpen .stepChevron { transform: rotate(90deg); }
 
 .stepIndex { grid-area: n; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .stepQ { grid-area: q; color: var(--text); font-weight: 500; }
@@ -248,3 +469,31 @@
   font-family: var(--font-ibm-plex-mono), monospace;
   font-size: 11px;
 }
+
+/* --- what the run cost ---------------------------------------------------- */
+
+.cost {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.18);
+  flex-shrink: 0;
+}
+
+.costBig {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.costText {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.costText b { color: var(--text); font-weight: 600; }

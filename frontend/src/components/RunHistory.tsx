@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DecisionPanel } from "./DecisionPanel";
 import styles from "./RunHistory.module.css";
 
 /**
- * Everything that has already run, and why it went the way it did.
+ * Everything that has already run.
  *
- * Live progress belongs to the floating island; this is the other half of that
- * split. Explanations used to be pinned to whichever run happened last, so a
- * second run destroyed the evidence from the first — exactly when a reviewer
- * wants to compare a cold run against the reuse that followed it.
+ * A list and nothing else: picking a run loads it into the floating window,
+ * which is where every explanation lives. The detail used to render underneath
+ * this list, which meant the same run was described in two places depending on
+ * whether it had just finished or was being looked up afterwards.
  */
 
 interface Run {
@@ -33,14 +32,15 @@ export function RunHistory({
   apiBase,
   refreshKey,
   selectedId,
+  locked = false,
   onSelect,
-  onOpenPolicy,
 }: {
   apiBase: string;
   refreshKey: number;
   selectedId: string | null;
+  /** Work is in flight; opening a past run would displace it in the window. */
+  locked?: boolean;
   onSelect: (taskId: string) => void;
-  onOpenPolicy?: (ruleKey: string) => void;
 }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,12 +68,16 @@ export function RunHistory({
 
   return (
     <div className={styles.history}>
+      <div className={styles.lead}>
+        Every run, and why it went the way it did. Pick one and it opens in the
+        floating window, with each step you can click into.
+      </div>
+
       <div className={styles.list}>
         {loading && <div className={styles.empty}>Loading…</div>}
         {!loading && done.length === 0 && (
           <div className={styles.empty}>
-            No runs yet. Fix an incident from the Inbox and it will appear here,
-            with the reason it went the way it did.
+            No runs yet. Fix an incident from the Inbox and it will appear here.
           </div>
         )}
         {done.map((r) => {
@@ -84,6 +88,8 @@ export function RunHistory({
               className={`${styles.row} ${
                 selectedId === r.task_id ? styles.rowActive : ""
               }`}
+              disabled={locked}
+              title={locked ? "Waiting for the current work to finish" : undefined}
               onClick={() => onSelect(r.task_id)}
             >
               <span className={styles.input}>{r.input}</span>
@@ -104,16 +110,6 @@ export function RunHistory({
             </button>
           );
         })}
-      </div>
-
-      <div className={styles.detail}>
-        {selectedId ? (
-          <DecisionPanel apiBase={apiBase} taskId={selectedId} onOpenPolicy={onOpenPolicy} />
-        ) : (
-          <div className={styles.empty}>
-            Pick a run to see which gate decided it, and on what evidence.
-          </div>
-        )}
       </div>
     </div>
   );

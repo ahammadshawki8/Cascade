@@ -210,7 +210,7 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
         raise ValueError("relearn payload needs playbook_id")
 
     rows = await db.q(
-        "SELECT name, domain, spec, status_cache FROM playbooks WHERE playbook_id = %s",
+        "SELECT name, version, domain, spec, status_cache FROM playbooks WHERE playbook_id = %s",
         (playbook_id,),
     )
     if not rows:
@@ -224,12 +224,26 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
         log.info("relearn: %s already superseded, skipping", playbook_id)
         return
 
+    await _relearn_event(
+        playbook_id,
+        "started",
+        name=playbook["name"],
+        version=playbook["version"],
+        stale_rules=await _moved_rules(playbook_id, db),
+    )
+
     task_text = await _synthesize_task(playbook["spec"], db)
     if task_text is None:
         # Nothing in the mock world exercises this playbook right now, so there
         # is no honest way to re-derive it. Leave it suspect — the freshness
         # gate already stops it executing — and try again on a later sweep.
         log.info("relearn: no representative incident for %s, deferring", playbook_id)
+        await _relearn_event(
+            playbook_id,
+            "deferred",
+            reason="No incident in the world currently exercises this runbook, "
+            "so there is nothing to re-solve it against. It stays quarantined.",
+        )
         return
 
     task_rows = await db.q(
@@ -238,12 +252,32 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
     )
     task_id = task_rows[0]["task_id"]
 
+    await _relearn_event(
+        playbook_id, "solving", task_id=str(task_id), task_text=task_text
+    )
+
     try:
-        await run_task(task_id, db)
+        # The bridge is what makes the re-solve watchable. Without a bus this
+        # is a real cold run happening in total silence, which is the one part
+        # of a re-learn a viewer has to see to believe it is re-planning rather
+        # than patching the old spec.
+        await run_task(task_id, db, sse_bus=_WorkerSse())
     except Exception as exc:
         log.warning("relearn explore run failed for %s: %s", playbook_id, exc)
         await _audit(db, "relearn.failed", {"playbook_id": playbook_id, "error": str(exc)})
+        await _relearn_event(playbook_id, "failed", reason=str(exc))
         return
+
+    solved = await db.q(
+        "SELECT status, result, mode FROM tasks WHERE task_id = %s", (str(task_id),)
+    )
+    await _relearn_event(
+        playbook_id,
+        "solved",
+        task_id=str(task_id),
+        result=(solved[0]["result"] if solved else None),
+        status=(solved[0]["status"] if solved else None),
+    )
 
     # The explore run enqueued its own compile event; claim it here so the new
     # playbook is linked as v2 instead of landing as an unrelated v1.
@@ -259,6 +293,13 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
     )
     if not pending:
         log.info("relearn: explore run produced nothing to compile for %s", playbook_id)
+        await _relearn_event(
+            playbook_id,
+            "rejected",
+            reason="The re-solved run produced nothing worth compiling. Under the "
+            "new policy this incident escalates rather than being fixed "
+            "automatically, and an escalation is not a procedure.",
+        )
         return
 
     from app.core.compiler import CompilationRejected, compile_playbook
@@ -269,6 +310,8 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
         "UPDATE outbox SET processed_at = now(), claimed_by = 'relearn' WHERE event_id = %s",
         (str(event["event_id"]),),
     )
+
+    await _relearn_event(playbook_id, "compiling", task_id=str(task_id))
 
     try:
         new_id = await compile_playbook(
@@ -282,9 +325,16 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
     except CompilationRejected as exc:
         log.warning("relearn compile rejected for %s: %s", playbook_id, exc)
         await _audit(db, "relearn.rejected", {"playbook_id": playbook_id, "reason": str(exc)})
+        await _relearn_event(playbook_id, "rejected", reason=str(exc))
         return
 
     if new_id is None:
+        await _relearn_event(
+            playbook_id,
+            "rejected",
+            reason="The re-solved run matched a runbook that already exists, so "
+            "there was nothing new to store.",
+        )
         return
 
     await db.q(
@@ -293,6 +343,16 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
         WHERE playbook_id = %s
         """,
         (playbook_id,),
+    )
+    new_rows = await db.q(
+        "SELECT name, version FROM playbooks WHERE playbook_id = %s", (str(new_id),)
+    )
+    await _relearn_event(
+        playbook_id,
+        "done",
+        new_playbook_id=str(new_id),
+        name=(new_rows[0]["name"] if new_rows else playbook["name"]),
+        version=(new_rows[0]["version"] if new_rows else None),
     )
     await _notify_sse(
         "playbook.changed",
@@ -303,6 +363,48 @@ async def job_relearn(payload: dict[str, Any], db) -> None:
         },
     )
     log.info("relearn: %s superseded by %s", playbook_id, new_id)
+
+
+# ---------------------------------------------------------------------------
+# Re-learn progress
+# ---------------------------------------------------------------------------
+# A re-learn is four distinct things — pick an incident, re-solve it cold,
+# compile the result, check the new provenance is not weaker — and all four
+# used to happen behind a single spinner that ran for a minute. When it
+# finished with nothing, which is a legitimate outcome, there was no way to
+# tell that apart from a broken button.
+
+
+class _WorkerSse:
+    """A bus for tasks the worker runs itself.
+
+    `run_task` publishes through whatever bus it is handed and the worker had
+    none, so a re-learn re-solved its incident in complete silence.
+    """
+
+    async def publish(self, topic: str, data: dict[str, Any]) -> None:
+        await _notify_sse(topic, data)
+
+
+async def _relearn_event(playbook_id: str, phase: str, **fields: Any) -> None:
+    await _notify_sse(
+        "playbook.relearn", {"playbook_id": str(playbook_id), "phase": phase, **fields}
+    )
+
+
+async def _moved_rules(playbook_id: str, db) -> list[dict[str, Any]]:
+    """Which cited rules are behind head — the reason this re-learn exists."""
+    try:
+        from app.core.freshness import check_freshness
+
+        freshness = await check_freshness(UUID(str(playbook_id)), db)
+        return [
+            {"rule_key": d.rule_key, "compiled_against": d.depends_on, "head": d.head}
+            for d in getattr(freshness, "stale_deps", [])
+        ]
+    except Exception as exc:
+        log.warning("could not resolve moved rules for %s: %s", playbook_id, exc)
+        return []
 
 
 async def job_recheck_suspect(payload: dict[str, Any], db) -> None:
