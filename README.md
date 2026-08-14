@@ -22,7 +22,7 @@ Last updated: August 15, 2026
 
 | | |
 |---|---|
-| Integration suite | **103 passed, 0 failed, 1 skipped**, against a live CockroachDB Cloud cluster |
+| Integration suite | **109 passed, 0 failed, 1 skipped**, against a live CockroachDB Cloud cluster |
 | Serving | **Amazon Bedrock** end to end: Claude Sonnet 4.6 (planner), Claude Haiku 4.5 (fast path), Titan Text Embeddings v2 |
 | Measured speedup | **4.03x** (cold 15,150 ms, guided 3,761 ms), n=3 each, on Bedrock |
 | Planner tokens avoided | **8,030 per reuse**, down to zero |
@@ -53,8 +53,11 @@ run is compiled into a runbook, together with the exact policy rules it
 consulted and the version each one was at.
 
 **Reuse.** A similar incident arrives. Vector search finds the runbook, the
-provenance check confirms every pinned rule is still current, and the stored
-steps execute directly with no planner in the loop.
+provenance check confirms every pinned rule is still current, its compiled
+preconditions are evaluated, and the stored steps execute directly. No model is
+called at any point on this path: retrieval is a vector index, freshness is a
+join, and the precondition check is a predicate evaluation. The same incident
+therefore gets the same answer every time.
 
 **Unlearn.** You change a rule. Every runbook that depended on it is stale the
 instant the transaction commits, in-flight tasks are interrupted before their
@@ -577,7 +580,7 @@ at-least-once delivery and a worker dying mid-job are both survivable.
 
 ```bash
 cd backend
-python verify_integration.py          # 103 assertions, resets the world first
+python verify_integration.py          # 109 assertions, resets the world first
 python verify_integration.py --keep   # run against existing state
 ```
 
@@ -604,6 +607,7 @@ not reachable through the API without a race.
 | Import | A pasted runbook yields name and steps, **one with no citations is refused**, human steps are kept, **an imported procedure never wins retrieval**, and it goes stale by the same join |
 | API keys | Scopes are enforced, the secret is never stored, revocation is immediate |
 | Connectors | Each destination gets its own payload shape, **a replayed step is suppressed rather than sent twice**, and a failing connection is skipped rather than retried forever |
+| Walkthrough | **No step waits only on a success-only event**, the cold run compiles, the runbook carries a checkable predicate, the second incident really reuses, the policy change invalidates it, and the stale runbook is refused on the record |
 | Contract | All 11 signatures unchanged |
 
 Frontend:
@@ -683,7 +687,7 @@ backend/
   worker/                  6 job kinds
   migrations/              001 schema, 002 seed, 003 extensions, 004 production,
                            005 step detail
-  verify_integration.py    103 assertions
+  verify_integration.py    109 assertions
   run_local.py             Windows selector-loop launcher
 
 frontend/src/
@@ -742,7 +746,7 @@ Getting started, Using Cascade, Understanding it, and Reference.
 full learn, reuse, unlearn, refuse sequence runs end to end. Vector index proven
 by live `EXPLAIN`. Tier 1 through 3 features shipped. Interface rebuilt as a
 desktop application shell with a command palette. Documentation site written.
-103 of 103 assertions passing against the deployed stack on Bedrock.
+109 of 109 assertions passing against the deployed stack on Bedrock.
 
 **Usable on your own material.** Policy is data rather than three hardcoded
 comparisons, so you can write rules the engine obeys. Runbooks you already have

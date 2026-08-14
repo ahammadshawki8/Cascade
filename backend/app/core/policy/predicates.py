@@ -292,6 +292,69 @@ def evaluate(predicate: dict | None, facts: dict, params: dict | None = None) ->
 # ---------------------------------------------------------------------------
 
 
+def validate_condition(
+    cond: Any,
+    known_fields: set[str] | None = None,
+    known_params: set[str] | None = None,
+) -> None:
+    """Check one condition tree on its own.
+
+    A rule's predicate is a `{when, require, deny}` envelope, but a runbook's
+    compiled precondition is a bare condition: it has nothing to say about
+    when it applies, because a runbook that does not apply is simply not
+    retrieved. Both need the same structural check, so it lives here.
+
+    `known_params` matters more than it looks. A compiled predicate that cites
+    `auto_remediate_tier.max_tier` when the parameter is actually `min_tier`
+    resolves to nothing, compares against nothing, evaluates to UNKNOWN, and is
+    then treated as satisfied. It passes every time and checks nothing, which is
+    worse than failing: it looks like a working gate. Catching it here is the
+    entire reason compiling a predicate is safer than interpreting prose.
+    """
+    if not isinstance(cond, dict):
+        raise PredicateError("expected a condition object")
+
+    for combinator in ("all", "any"):
+        if combinator in cond:
+            if not isinstance(cond[combinator], list) or not cond[combinator]:
+                raise PredicateError(f"'{combinator}' needs a non-empty list")
+            for child in cond[combinator]:
+                validate_condition(child, known_fields, known_params)
+            return
+    if "not" in cond:
+        validate_condition(cond["not"], known_fields, known_params)
+        return
+
+    op = cond.get("op")
+    if op not in OPS and op not in UNARY_OPS:
+        raise PredicateError(f"unknown operator {op!r}")
+    name = cond.get("field")
+    if not name:
+        raise PredicateError("a condition needs a 'field'")
+    if known_fields is not None and name not in known_fields:
+        raise PredicateError(
+            f"unknown field {name!r}; known fields are " + ", ".join(sorted(known_fields))
+        )
+    if op in OPS and "value" not in cond and "param" not in cond:
+        raise PredicateError(
+            f"'{op}' needs a 'value' or a 'param' to compare {name!r} against"
+        )
+    if known_params is not None and "param" in cond:
+        ref = cond["param"]
+        if ref not in known_params:
+            raise PredicateError(
+                f"unknown policy parameter {ref!r}; available parameters are "
+                + ", ".join(sorted(known_params))
+            )
+
+
+def evaluate_condition(cond: Any, facts: dict, params: dict | None = None) -> Tri:
+    """Evaluate a bare condition tree. UNKNOWN stays UNKNOWN."""
+    if cond is None:
+        return None
+    return _eval_cond(cond, facts, params or {}, [])
+
+
 def validate_predicate(predicate: Any, known_fields: set[str] | None = None) -> None:
     """Reject a malformed predicate when it is written, not when it fires.
 
@@ -312,36 +375,6 @@ def validate_predicate(predicate: Any, known_fields: set[str] | None = None) -> 
     if "require" not in predicate:
         raise PredicateError("a predicate needs a 'require' condition")
 
-    def walk(cond: Any) -> None:
-        if not isinstance(cond, dict):
-            raise PredicateError("expected a condition object")
-        for combinator in ("all", "any"):
-            if combinator in cond:
-                if not isinstance(cond[combinator], list) or not cond[combinator]:
-                    raise PredicateError(f"'{combinator}' needs a non-empty list")
-                for child in cond[combinator]:
-                    walk(child)
-                return
-        if "not" in cond:
-            walk(cond["not"])
-            return
-
-        op = cond.get("op")
-        if op not in OPS and op not in UNARY_OPS:
-            raise PredicateError(f"unknown operator {op!r}")
-        name = cond.get("field")
-        if not name:
-            raise PredicateError("a condition needs a 'field'")
-        if known_fields is not None and name not in known_fields:
-            raise PredicateError(
-                f"unknown field {name!r}; known fields are "
-                + ", ".join(sorted(known_fields))
-            )
-        if op in OPS and "value" not in cond and "param" not in cond:
-            raise PredicateError(
-                f"'{op}' needs a 'value' or a 'param' to compare {name!r} against"
-            )
-
     for key in ("when", "require"):
         if predicate.get(key) is not None:
-            walk(predicate[key])
+            validate_condition(predicate[key], known_fields)

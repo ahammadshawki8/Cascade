@@ -22,6 +22,7 @@ import { RuleComposer } from "../components/RuleComposer";
 import { ImportProcedure } from "../components/ImportProcedure";
 import { MakeItYours, Progress } from "../components/MakeItYours";
 import { RightDock, DockTab } from "../components/RightDock";
+import { Shortcuts } from "../components/Shortcuts";
 import { RunHistory } from "../components/RunHistory";
 import { narrateState } from "../components/narrate";
 import { GuidedTour } from "../components/GuidedTour";
@@ -116,7 +117,10 @@ export default function CascadeApp() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [checklistOff, setChecklistOff] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [setup, setSetup] = useState({ myRules: 0, connections: 0, keys: 0 });
+  /** True for one second after `g`, waiting for the destination letter. */
+  const goArmed = useRef(false);
   /** A one-off line for the island to announce. */
   const [announce, setAnnounce] = useState<string | null>(null);
   /** Whichever run the island is currently describing. */
@@ -443,7 +447,16 @@ export default function CascadeApp() {
           ...(d.phase === "done" ? { newName: d.name, newVersion: d.version } : {}),
           ...(d.reason ? { reason: d.reason } : {}),
         }));
-        if (d.phase === "done") fireTour("relearn:done");
+        // Any terminal phase, not just the happy one.
+        //
+        // A re-learn can legitimately end in `rejected`, `deferred` or
+        // `failed`, and the walkthrough's last step waited only for `done`.
+        // Those three outcomes are the system working correctly and would have
+        // left the tour stranded on its final card, which is the worst possible
+        // place to strand someone.
+        if (["done", "rejected", "deferred", "failed"].includes(d.phase)) {
+          fireTour("relearn:done");
+        }
       } catch {}
     });
     es.addEventListener("approval.requested", (e) => {
@@ -530,18 +543,84 @@ export default function CascadeApp() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Global Ctrl/Cmd-K, and Ctrl/Cmd-\ for the side panel.
+  /**
+   * Keyboard: Ctrl-K, Ctrl-\, `?`, and `g` then a letter.
+   *
+   * The `g`-then-letter pattern is the one Gmail, GitHub and Linear all use, so
+   * it costs nothing to learn and makes the app feel like software people have
+   * used before rather than a bespoke console.
+   */
   useEffect(() => {
+    // A shortcut that fires while someone is typing a rule name is a bug, not
+    // a feature. Modified keys are still honoured everywhere.
+    const typing = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        el.isContentEditable
+      );
+    };
+
+    const GO: Record<string, ViewId> = {
+      w: "work",
+      p: "procedures",
+      r: "policy",
+      c: "connections",
+      s: "system",
+    };
+
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      if (e.key.toLowerCase() === "k") {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          setPaletteOpen((open) => !open);
+        } else if (e.key === "\\") {
+          e.preventDefault();
+          setDockOpen((open) => !open);
+        }
+        return;
+      }
+
+      if (e.altKey || typing(e.target)) return;
+
+      if (e.key === "?") {
         e.preventDefault();
-        setPaletteOpen((open) => !open);
-      } else if (e.key === "\\") {
+        setShortcutsOpen(true);
+        return;
+      }
+      if (e.key === "Escape") {
+        // Everything dismissible, including the introduction. The shortcut map
+        // promises "close whatever is open", and an intro card that ignored it
+        // would be the first thing to disprove that.
+        setShortcutsOpen(false);
+        setComposerOpen(false);
+        setImportOpen(false);
+        setTutorialOpen(false);
+        setPaletteOpen(false);
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === "g") {
+        goArmed.current = true;
+        // A prefix that stays armed forever turns every later keypress into a
+        // navigation. One second is long enough to be deliberate.
+        window.setTimeout(() => {
+          goArmed.current = false;
+        }, 1000);
+        return;
+      }
+      if (goArmed.current && GO[key]) {
+        goArmed.current = false;
         e.preventDefault();
-        setDockOpen((open) => !open);
+        setView(GO[key]);
       }
     };
+
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -596,6 +675,12 @@ export default function CascadeApp() {
           }
         }
         setCompiling(false);
+        // Whether or not anything was compiled. A compile can be rejected by
+        // the safety lint or deduped into an existing runbook, and both are
+        // correct outcomes that leave a walkthrough step waiting on
+        // `runbook:compiled` with nothing coming. Firing after a successful
+        // compile too is a no-op: the step has already moved on.
+        fireTour("compile:settled");
       }
 
       const reason = data?.decision?.reason;
@@ -1289,6 +1374,9 @@ export default function CascadeApp() {
   const tourReveal =
     tourStep === null ? null : (TOUR[tourStep]?.reveal ?? null);
 
+  /** The final step points at the checklist, so the checklist has to be there. */
+  const tourHandover = tourStep !== null && TOUR[tourStep]?.id === "handover";
+
   /**
    * Get the floating window out of the way when the walkthrough is pointing at
    * something else.
@@ -1401,9 +1489,10 @@ export default function CascadeApp() {
                   <div className={`${styles.pane} ${styles.paneDivider}`}>
                     {/* The second act, once the walkthrough has made its point.
                         Hidden during the tour so there is never a second thing
-                        competing for the click the tour is asking for. */}
-                    {tourStep === null && !checklistOff && !allDone && (
-                      <div className={styles.checklist}>
+                        competing for the click the tour is asking for — except
+                        on the final step, which exists to hand over to it. */}
+                    {(tourStep === null || tourHandover) && !checklistOff && !allDone && (
+                      <div className={styles.checklist} data-tour="make-it-yours">
                         <MakeItYours
                           progress={progress}
                           onDismiss={() => setChecklistOff(true)}
@@ -1427,6 +1516,7 @@ export default function CascadeApp() {
                       relearningId={relearningId}
                       onRelearn={handleRelearn}
                       onViewEpisodes={handleViewEpisodes}
+                      onImport={() => setImportOpen(true)}
                     />
                   </div>
                 </div>
@@ -1452,6 +1542,7 @@ export default function CascadeApp() {
                     playbooks={playbooks}
                     onRelearn={handleRelearn}
                     onViewEpisodes={handleViewEpisodes}
+                    onImport={() => setImportOpen(true)}
                   />
                 </div>
               )}
@@ -1660,6 +1751,8 @@ export default function CascadeApp() {
           onCancel={cancelTour}
         />
       )}
+
+      {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
 
       {toast && <div className={styles.toast}>{toast}</div>}
 

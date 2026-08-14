@@ -78,6 +78,8 @@ async def main(keep: bool) -> int:
         await check_procedure_import(database)
         await check_memory_api(database)
         await check_connectors(database)
+        # Last, because it resets the world to walk the tour from a clean start.
+        await check_walkthrough_path(database)
         await check_contract_surface()
     finally:
         await database.close_pool()
@@ -1421,6 +1423,140 @@ async def check_connectors(db) -> None:
     )
 
     await db.q("DELETE FROM connections WHERE connection_id = %s", (str(connection_id),))
+
+
+async def check_walkthrough_path(db) -> None:
+    """Every waiting step of the guided walkthrough can actually finish.
+
+    This exists because it did not. Step 6 waited on `run:reused`, which fires
+    on one of the four things a run can do, and when retrieval hit and the
+    precondition check missed, the walkthrough waited forever on an event that
+    was never coming. A reviewer found it inside five minutes.
+
+    The tour is data (`tourSteps.ts`), so the two things worth asserting are
+    structural and behavioural. Structural: no waiting step depends solely on a
+    success-only event. Behavioural: the engine really does produce the
+    outcomes the narrative claims, in the order it claims them.
+    """
+    from pathlib import Path
+
+    # --- structural -------------------------------------------------------
+    #
+    # Read the tour rather than duplicating it. A step added later with a
+    # single success-only exit is exactly the regression this catches.
+    steps_file = None
+    for candidate in (
+        Path(__file__).resolve().parent.parent / "frontend/src/components/tourSteps.ts",
+        Path("frontend/src/components/tourSteps.ts"),
+    ):
+        if candidate.exists():
+            steps_file = candidate
+            break
+
+    if steps_file is None:
+        record("walkthrough: tour definition found", None, "tourSteps.ts not present")
+    else:
+        source = steps_file.read_text(encoding="utf-8")
+        # Events that fire whatever the run did. A waiting step must accept at
+        # least one of these, or a refusal leaves it stranded.
+        universal = (
+            "run:started",
+            "run:finished",
+            "compile:settled",
+            "policy:committed",
+            "relearn:done",
+        )
+        risky: list[str] = []
+        for block in source.split("{\n    id:")[1:]:
+            name = block.split('"')[1] if '"' in block else "?"
+            if "advanceOn:" not in block:
+                continue
+            clause = block.split("advanceOn:")[1].split("\n")[0]
+            if not any(event in clause for event in universal):
+                risky.append(f"{name} -> {clause.strip().rstrip(',')}")
+        record(
+            "walkthrough: no step waits only on a success-only event",
+            not risky,
+            "; ".join(risky) if risky else f"checked against {steps_file.name}",
+        )
+
+    # --- behavioural ------------------------------------------------------
+    from app.core.executor import run_task
+    from worker.handler import drain_outbox
+
+    await reset_world(db)
+
+    # Step 2 and 3: a cold run that compiles into a runbook.
+    cold = await new_task(db, "Remediate INC-1001")
+    await run_task(cold, db)
+    await drain_outbox(db, worker_id="verify")
+    compiled = await db.one(
+        "SELECT playbook_id, spec FROM playbooks WHERE status_cache != 'invalidated' "
+        "ORDER BY created_at DESC LIMIT 1"
+    )
+    record(
+        "walkthrough: the cold run compiles a runbook (steps 2 and 3 can finish)",
+        compiled is not None,
+        "no runbook was produced" if compiled is None else "",
+    )
+    if compiled is None:
+        return
+
+    has_predicate = bool((compiled["spec"] or {}).get("precondition_predicate"))
+    record(
+        "walkthrough: the runbook carries a checkable predicate, so reuse is deterministic",
+        has_predicate,
+        "" if has_predicate else
+        "predicate is absent, so reuse falls back to the model and can vary run to run",
+    )
+
+    # Steps 5 and 6: the one that hung. This must be a reuse, not merely a run.
+    warm = await new_task(db, "Remediate INC-1002")
+    await run_task(warm, db)
+    task = await db.one(
+        "SELECT mode, playbook_id, result FROM tasks WHERE task_id = %s", (str(warm),)
+    )
+    record(
+        "walkthrough: the second incident really reuses (step 6 can finish)",
+        task["mode"] == "guided" and task["playbook_id"] is not None,
+        f"mode={task['mode']} result={task['result']}",
+    )
+
+    # Step 8: committing a policy change.
+    from app.core.cascade import change_rule
+
+    rule = await db.one(
+        "SELECT body FROM rules WHERE rule_key = 'incident.rollback_window' "
+        "AND valid_to IS NULL"
+    )
+    impact = await change_rule(
+        rule_key="incident.rollback_window",
+        new_body=rule["body"],
+        new_params={"hours": 4},
+        actor="verify",
+        db=db,
+    )
+    record(
+        "walkthrough: the policy change invalidates the runbook (steps 8 and 9)",
+        len(impact.impacted_playbooks) >= 1,
+        f"{len(impact.impacted_playbooks)} runbook(s) invalidated",
+    )
+
+    # Steps 10 and 11: the refusal the whole tour builds towards.
+    refused = await new_task(db, "Remediate INC-1009")
+    await run_task(refused, db)
+    blocked = await db.one(
+        """
+        SELECT count(*)::INT AS n FROM audit_log
+        WHERE kind = 'retrieval.stale_block' AND details ->> 'task_id' = %s
+        """,
+        (str(refused),),
+    )
+    record(
+        "walkthrough: the stale runbook is refused, on the record (step 11)",
+        blocked["n"] >= 1,
+        f"{blocked['n']} stale block(s) recorded for that run",
+    )
 
 
 async def check_contract_surface() -> None:

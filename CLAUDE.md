@@ -16,7 +16,7 @@ blocked only on AWS credentials**
 | Tier 3 (6 features) | ✅ shipped · 2 deliberately deferred |
 | UI | ✅ rebuilt as a desktop application shell |
 | Docs site | ✅ 16 pages, product-usage focused · 16 rendered Mermaid diagrams · every code block highlighted with a copy button |
-| **`verify_integration.py`** | **103 passed · 0 failed · 1 skipped** — re-verified against the deployed stack on **Amazon Bedrock** |
+| **`verify_integration.py`** | **109 passed · 0 failed · 1 skipped** — re-verified against the deployed stack on **Amazon Bedrock** |
 | Frontend | builds clean, TypeScript passes |
 | Lint | 6 cosmetic findings, all in contract-frozen files |
 | Deployment | scripts written & syntax-checked, **not yet executed** |
@@ -55,7 +55,9 @@ Not "written". Verified, with the evidence named.
 | **Memory API + MCP** | ✅ `POST /api/memory/check` with scoped, hashed, revocable keys. Zero-dependency MCP server at `backend/mcp/`, served from `GET /api/mcp/server.mjs` |
 | **Connectors** | ✅ Slack, Discord, webhook. Local idempotency ledger suppresses replays; dry-run default, 10s timeout, breaker at 3 failures |
 | **Reset is scoped** | ✅ restores the sample, preserves user rules, imported procedures, connections and keys, and re-pins provenance to head |
-| `verify_integration.py` | ✅ **103/103**, against the deployed stack on Bedrock |
+| **Reuse is deterministic** | ✅ preconditions compile to predicates, validated structurally *and* against the incident they were learned from. No model on the reuse path at all |
+| **The walkthrough cannot stall** | ✅ every waiting step accepts an outcome-independent event, asserted structurally by reading `tourSteps.ts` |
+| `verify_integration.py` | ✅ **109/109**, against the deployed stack on Bedrock |
 | Tier 1, 2, 3 features | ✅ 15 shipped, 2 deliberately skipped (see *Deliberately not built*) |
 | Frontend | ✅ desktop shell, command palette, builds clean, TypeScript passes |
 | Docs site | ✅ 16 pages at `/docs`, 16 Mermaid diagrams, copy buttons |

@@ -195,3 +195,71 @@
   justify-content: center;
   padding: 0 5px;
 }
+
+/* --- expanded rail -------------------------------------------------------
+   Labels by default. The collapsed icon-only form is still there for anyone
+   who wants the horizontal space, and their choice persists. */
+
+.barWide {
+  width: 188px;
+  align-items: stretch;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.barWide .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 6px;
+  justify-content: flex-start;
+}
+
+.wordmark {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.barWide .item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 11px;
+  padding-left: 11px;
+  border-radius: var(--radius-sm);
+}
+
+.itemLabel {
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.barWide .badge {
+  position: static;
+  margin-left: auto;
+}
+
+.collapse {
+  display: none;
+}
+
+.barWide .collapse {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 7px 11px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.barWide .collapse:hover {
+  color: var(--text-dim);
+  background-color: var(--raised);
+}

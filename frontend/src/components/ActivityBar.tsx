@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import styles from "./ActivityBar.module.css";
 import { Logo } from "./Logo";
 import {
@@ -12,7 +13,11 @@ import {
   Command,
   BookMarked,
   PanelRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
+
+const EXPANDED_KEY = "cascade_rail_expanded";
 
 /**
  * Five destinations, one per noun.
@@ -81,10 +86,37 @@ export function ActivityBar({
   onCommandPalette,
   onToggleDock,
 }: Props) {
+  /**
+   * Labels on, until you turn them off.
+   *
+   * Five unlabeled icons is five guesses, and hover tooltips only help someone
+   * who already suspects there is something worth hovering over. Starting
+   * expanded costs a first-time viewer nothing and saves them the guessing;
+   * anyone who wants the horizontal space back collapses it once and it stays
+   * collapsed.
+   */
+  const [expanded, setExpanded] = useState(true);
+
+  // localStorage is unavailable during SSR, so the stored preference can only
+  // be read after mount. Defaulting to expanded means first visit is right.
+  useEffect(() => {
+    setExpanded(window.localStorage.getItem(EXPANDED_KEY) !== "false");
+  }, []);
+
+  const toggleExpanded = () =>
+    setExpanded((open) => {
+      window.localStorage.setItem(EXPANDED_KEY, String(!open));
+      return !open;
+    });
+
   return (
-    <nav className={styles.bar} aria-label="Primary">
+    <nav
+      className={`${styles.bar} ${expanded ? styles.barWide : ""}`}
+      aria-label="Primary"
+    >
       <div className={styles.brand} title="Cascade">
         <Logo size={22} />
+        {expanded && <span className={styles.wordmark}>Cascade</span>}
       </div>
 
       <div className={styles.group}>
@@ -103,19 +135,32 @@ export function ActivityBar({
               aria-label={item.label}
             >
               <Icon size={20} strokeWidth={1.75} />
+              {expanded && <span className={styles.itemLabel}>{item.label}</span>}
               {count > 0 && (
                 <span className={styles.badge}>{count > 99 ? "99+" : count}</span>
               )}
-              <span className={styles.tooltip} role="tooltip">
-                <strong>{item.label}</strong>
-                <em>{item.hint}</em>
-              </span>
+              {!expanded && (
+                <span className={styles.tooltip} role="tooltip">
+                  <strong>{item.label}</strong>
+                  <em>{item.hint}</em>
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
       <div className={styles.spacer} />
+
+      <button
+        type="button"
+        className={styles.collapse}
+        onClick={toggleExpanded}
+        aria-label={expanded ? "Collapse the sidebar" : "Expand the sidebar"}
+      >
+        {expanded ? <ChevronsLeft size={15} /> : <ChevronsRight size={15} />}
+        {expanded && <span className={styles.itemLabel}>Collapse</span>}
+      </button>
 
       <div className={styles.group}>
         <button
@@ -126,11 +171,14 @@ export function ActivityBar({
           aria-label="Copilot and approvals"
         >
           <PanelRight size={20} strokeWidth={1.75} />
+          {expanded && <span className={styles.itemLabel}>Side panel</span>}
           {dockBadge > 0 && <span className={styles.badge}>{dockBadge}</span>}
-          <span className={styles.tooltip} role="tooltip">
-            <strong>Side panel</strong>
-            <em>Copilot and approvals · Ctrl \</em>
-          </span>
+          {!expanded && (
+            <span className={styles.tooltip} role="tooltip">
+              <strong>Side panel</strong>
+              <em>Copilot and approvals · Ctrl \</em>
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -139,17 +187,23 @@ export function ActivityBar({
           aria-label="Command palette"
         >
           <Command size={20} strokeWidth={1.75} />
-          <span className={styles.tooltip} role="tooltip">
-            <strong>Commands</strong>
-            <em>Ctrl K</em>
-          </span>
+          {expanded && <span className={styles.itemLabel}>Commands</span>}
+          {!expanded && (
+            <span className={styles.tooltip} role="tooltip">
+              <strong>Commands</strong>
+              <em>Ctrl K</em>
+            </span>
+          )}
         </button>
         <a href="/docs" className={styles.item} aria-label="Documentation">
           <BookMarked size={20} strokeWidth={1.75} />
-          <span className={styles.tooltip} role="tooltip">
-            <strong>Documentation</strong>
-            <em>Concepts, API, operations</em>
-          </span>
+          {expanded && <span className={styles.itemLabel}>Docs</span>}
+          {!expanded && (
+            <span className={styles.tooltip} role="tooltip">
+              <strong>Documentation</strong>
+              <em>Concepts, API, operations</em>
+            </span>
+          )}
         </a>
         <button
           type="button"
@@ -158,10 +212,13 @@ export function ActivityBar({
           aria-label="Restore sample world"
         >
           <RotateCcw size={20} strokeWidth={1.75} />
-          <span className={styles.tooltip} role="tooltip">
-            <strong>Restore sample</strong>
-            <em>Keeps everything you made</em>
-          </span>
+          {expanded && <span className={styles.itemLabel}>Restore sample</span>}
+          {!expanded && (
+            <span className={styles.tooltip} role="tooltip">
+              <strong>Restore sample</strong>
+              <em>Keeps everything you made</em>
+            </span>
+          )}
         </button>
       </div>
     </nav>

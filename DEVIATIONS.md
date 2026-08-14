@@ -336,6 +336,36 @@ humans and to external agents through the API instead.
 **Impact:** none, and one regression avoided. Recorded because the temptation to
 add it back will recur.
 
+## 16. Preconditions are compiled to predicates, not left as prose
+
+**Day-0 contract:** `PlaybookSpec.preconditions` is a list of sentences, checked
+before reuse by asking a model whether they hold.
+
+**What was built:** the sentences remain, for a person reading the runbook, and
+`precondition_predicate` was added beside them. That is what actually decides
+whether a runbook applies.
+
+**Why:** the prose check was an LLM call on the hot path, re-asking the same
+question on every reuse and free to answer differently each time. It did: a
+compiled precondition reading "the deploy is recent enough for the rollback
+window to permit rollback" required date arithmetic from a raw timestamp, the
+model got it wrong, retrieval hit, the precondition missed, and reuse died
+silently. A reviewer hit it inside five minutes and the guided walkthrough hung.
+
+**Impact:** the reuse path now calls no model at all. Retrieval is a vector
+index, freshness is a join, preconditions are an evaluation. The
+nondeterminism moved from the hot path to the cold one, where it is validated:
+a compiled predicate must reference real fields, must reference policy
+parameters that actually exist, and **must hold for the incident it was
+compiled from**. Anything else is rejected in favour of a predicate derived
+structurally from the trajectory. Older runbooks with no predicate still fall
+back to the prose check, so nothing already stored broke.
+
+The parameter check is not theoretical. The model's first attempt cited
+`auto_remediate_tier.max_tier` when the parameter is `min_tier`; it resolved to
+nothing, evaluated to UNKNOWN, was treated as satisfied, and would have passed
+forever while checking nothing.
+
 ---
 
 *Last updated: August 15, 2026*

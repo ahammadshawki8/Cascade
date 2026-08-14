@@ -21,35 +21,50 @@ export interface Progress {
   createdKey: boolean;
 }
 
+/**
+ * Ordered by friction, not by how impressive each one is.
+ *
+ * The first item has to be winnable in about ten seconds or people stop after
+ * reading it. Importing is a paste and a click; writing a rule is a short form;
+ * a key is a button but only pays off inside an editor; Slack is last because
+ * it is the only one that makes you leave the app to go and fetch a webhook
+ * URL. Leading with the most impressive item and burying the cheapest is how
+ * checklists go unfinished.
+ */
 const ITEMS: {
   id: keyof Progress;
   title: string;
   body: string;
   cta: string;
+  effort: string;
 }[] = [
+  {
+    id: "importedProcedure",
+    title: "Import a runbook you already have",
+    body: "Paste one in, or use the example. Cascade links it to policy, and from then on it goes stale when policy moves.",
+    cta: "Import one",
+    effort: "10 seconds",
+  },
   {
     id: "wroteRule",
     title: "Write a policy rule of your own",
     body: "Not a setting. A rule the agent has to obey, that nothing in this codebase knows about.",
-    cta: "Open Policy",
-  },
-  {
-    id: "importedProcedure",
-    title: "Import a runbook you already have",
-    body: "Paste one in. Cascade links it to policy, and from then on it goes stale when policy moves.",
-    cta: "Open Procedures",
-  },
-  {
-    id: "connectedApp",
-    title: "Send the result to Slack",
-    body: "A webhook URL is all it takes. The next refusal lands in a real channel.",
-    cta: "Open Connections",
+    cta: "Write one",
+    effort: "1 minute",
   },
   {
     id: "createdKey",
     title: "Let your own agent ask",
     body: "Create a key, paste four lines into your editor, and ask it whether what it remembers is still valid.",
-    cta: "Open Connections",
+    cta: "Create a key",
+    effort: "2 minutes",
+  },
+  {
+    id: "connectedApp",
+    title: "Send the result to Slack",
+    body: "A webhook URL is all it takes. The next refusal lands in a real channel.",
+    cta: "Connect Slack",
+    effort: "3 minutes",
   },
 ];
 
@@ -98,7 +113,10 @@ export function MakeItYours({
                 {complete && <Check size={12} strokeWidth={3} />}
               </span>
               <div className={styles.itemBody}>
-                <div className={styles.itemTitle}>{item.title}</div>
+                <div className={styles.itemTitle}>
+                  {item.title}
+                  {!complete && <span className={styles.effort}>{item.effort}</span>}
+                </div>
                 <div className={styles.itemText}>{item.body}</div>
               </div>
               {!complete && (

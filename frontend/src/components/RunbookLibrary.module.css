@@ -400,3 +400,32 @@
   color: var(--accent);
   white-space: nowrap;
 }
+
+/* Empty state: say what it is, then offer the way out of it. */
+.emptyTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 5px;
+}
+
+.emptyBody {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-faint);
+  max-width: 46ch;
+  margin-bottom: 11px;
+}
+
+.emptyAction {
+  padding: 6px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.emptyAction:hover { background-color: var(--accent); color: var(--bg); }

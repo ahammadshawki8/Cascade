@@ -17,6 +17,8 @@ from app.core.policy.predicates import (
     PredicateError,
     Verdict,
     evaluate,
+    evaluate_condition,
+    validate_condition,
     validate_predicate,
 )
 
@@ -27,5 +29,7 @@ __all__ = [
     "Verdict",
     "build_incident_facts",
     "evaluate",
+    "evaluate_condition",
+    "validate_condition",
     "validate_predicate",
 ]

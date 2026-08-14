@@ -36,6 +36,54 @@ interface Condition {
 
 const UNARY = new Set(["exists", "missing", "truthy"]);
 
+/**
+ * Start from an intent, not a blank form.
+ *
+ * Six fields with no starting point is where people close the dialog. Each of
+ * these is a rule an on-call team plausibly has, and each lands on a different
+ * part of the incident set, so pressing one and then Try it teaches what the
+ * builder does faster than any explanation of it.
+ */
+const PRESETS: {
+  id: string;
+  label: string;
+  because: string;
+  title: string;
+  body: string;
+  when?: Condition;
+  require: Condition;
+  deny: string;
+}[] = [
+  {
+    id: "p1",
+    label: "P1 needs a human",
+    because: "the most common real policy, and it refuses three of the sample incidents",
+    title: "P1 needs a human",
+    body: "P1 incidents always require a human decision, whatever the service tier.",
+    when: { field: "severity", op: "eq", value: "P1" },
+    require: { field: "severity", op: "neq", value: "P1" },
+    deny: "severity {severity} always needs a human decision",
+  },
+  {
+    id: "tier",
+    label: "Protect the critical tier",
+    because: "nothing automated touches tier 1, however healthy it looks",
+    title: "Never touch tier 1 automatically",
+    body: "Tier 1 services are never remediated automatically.",
+    require: { field: "service_tier", op: "gte", value: "2" },
+    deny: "tier {service_tier} is too critical to touch automatically",
+  },
+  {
+    id: "quiet",
+    label: "Only act on open incidents",
+    because: "refuses anything already mitigated or resolved",
+    title: "Only act on open incidents",
+    body: "An incident that is not open has nothing left to remediate.",
+    require: { field: "state", op: "eq", value: "open" },
+    deny: "the incident is {state}, not open",
+  },
+];
+
 const toKey = (title: string) =>
   "incident." +
   (title
@@ -217,6 +265,29 @@ export function RuleComposer({
         </header>
 
         <div className={styles.body}>
+          <div className={styles.presets}>
+            <span className={styles.presetsLabel}>Start from</span>
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                className={styles.preset}
+                title={preset.because}
+                onClick={() => {
+                  setTitle(preset.title);
+                  setBody(preset.body);
+                  setUseWhen(Boolean(preset.when));
+                  if (preset.when) setWhen(preset.when);
+                  setRequire(preset.require);
+                  setDeny(preset.deny);
+                  setEnforcement("enforcing");
+                  setPreview(null);
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
           <label className={styles.field}>
             <span className={styles.label}>Call it</span>
             <input

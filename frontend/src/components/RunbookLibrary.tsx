@@ -45,6 +45,8 @@ export interface Playbook {
 
 interface RunbookLibraryProps {
   playbooks: Playbook[];
+  /** Offered from the empty state, where it is the most useful thing on screen. */
+  onImport?: () => void;
   /**
    * A cold run has finished and its runbook is still being compiled.
    *
@@ -73,6 +75,7 @@ export function RunbookLibrary({
   relearningId = null,
   onRelearn,
   onViewEpisodes,
+  onImport,
 }: RunbookLibraryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -140,9 +143,20 @@ export function RunbookLibrary({
         )}
 
         {playbooks.length === 0 && !compiling && (
+          /* An empty list that only explains itself wastes the one moment
+             someone is definitely looking for something to do. There are two
+             ways to fill this library and both belong here. */
           <div className={styles.empty}>
-            Nothing learned yet. Fix an incident from the Inbox and the runbook
-            compiled from it will appear here.
+            <div className={styles.emptyTitle}>No procedures yet</div>
+            <div className={styles.emptyBody}>
+              Fix an incident from the Inbox and the runbook compiled from it
+              appears here. Or bring one you already have.
+            </div>
+            {onImport && (
+              <button className={styles.emptyAction} onClick={onImport}>
+                Import a runbook
+              </button>
+            )}
           </div>
         )}
 

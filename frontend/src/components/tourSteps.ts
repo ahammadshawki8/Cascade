@@ -30,6 +30,14 @@ export type TourEvent =
   | "run:reused"
   | "run:refused"
   | "runbook:compiled"
+  /**
+   * The compile poll has ended, whether or not a runbook appeared.
+   *
+   * `runbook:compiled` only fires on success, and a compile can legitimately
+   * produce nothing: it can be rejected by the safety lint, or deduped into an
+   * existing runbook. Either leaves the step that waits for it stranded.
+   */
+  | "compile:settled"
   | "policy:committed"
   | "relearn:done";
 
@@ -100,7 +108,7 @@ export const TOUR: TourStep[] = [
       "It is in the lower lane right now, because there is nothing in memory for it to be in the upper one.",
     target: '[data-tour="island"]',
     reveal: ["INC-1001"],
-    advanceOn: "runbook:compiled",
+    advanceOn: ["runbook:compiled", "compile:settled"],
     action: "Click the pill to open it",
     waitingLabel: "Solving, then compiling what it did",
   },
@@ -265,6 +273,28 @@ export const TOUR: TourStep[] = [
     mechanism:
       "Every number on that screen is read live from the cluster you have just been driving.",
     target: '[data-tour="nav-system"]',
+    reveal: [],
+    nextLabel: "Now try it on yours",
+  },
+
+  /**
+   * The handover.
+   *
+   * Ending on the architecture view left a reviewer having watched something
+   * impressive happen to data we shipped, with no obvious next move and every
+   * reason to suspect the whole thing was scripted. This step exists to answer
+   * that suspicion the only way it can be answered: by pointing at the four
+   * things they can do to their own material in the next few minutes.
+   */
+  {
+    id: "handover",
+    title: "Everything so far ran on our data",
+    body:
+      "Which is the fair objection to any demo. So here is the same system on yours: import a runbook you already have, write a policy rule the agent must obey, give your own agent a key, or send the next refusal to your Slack.\n\nThe first one takes about ten seconds.",
+    mechanism:
+      "None of it is a separate mode. Your rules and procedures sit in the same tables as the sample ones, and restoring the sample world leaves every one of them in place.",
+    target: '[data-tour="make-it-yours"]',
+    view: "work",
     reveal: [],
     nextLabel: "Finish, and bring back the full world",
   },

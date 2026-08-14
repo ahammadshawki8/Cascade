@@ -398,6 +398,120 @@ async def _explore_mode(
 # ---------------------------------------------------------------------------
 
 
+def _policy_params(rules: dict[str, Any]) -> dict[str, Any]:
+    """Flatten live rule parameters into names a compiled predicate can cite.
+
+    `incident.rollback_window` with `{"hours": 4}` becomes both
+    `rollback_window.hours` and `incident.rollback_window.hours`, because the
+    compiler writes the short form and being strict about which one is correct
+    buys nothing.
+
+    Resolved at run time rather than baked into the predicate on purpose: a
+    frozen number would go on meaning 24 after policy moved to 4, which is the
+    precise failure this whole project exists to prevent.
+    """
+    out: dict[str, Any] = {}
+    for rule in (rules or {}).get("rules", []):
+        key = str(rule.get("rule_key", ""))
+        short = key.split(".", 1)[-1]
+        for name, value in (rule.get("params") or {}).items():
+            out[f"{short}.{name}"] = value
+            out[f"{key}.{name}"] = value
+            out.setdefault(name, value)
+    return out
+
+
+def _explain_predicate_miss(
+    predicate: dict[str, Any], facts: dict[str, Any], rules: dict[str, Any]
+) -> list[str]:
+    """Name the conditions that actually failed, in readable form.
+
+    "Preconditions not met" is not evidence of anything. The console shows this
+    beside the runbook it refused, so it has to say which field, what was
+    required, and what was actually true.
+    """
+    from .policy import evaluate_condition
+
+    params = _policy_params(rules)
+    children = predicate.get("all") if isinstance(predicate, dict) else None
+    nodes = children if isinstance(children, list) else [predicate]
+
+    failed: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if evaluate_condition(node, facts, params) is not False:
+            continue
+        field = node.get("field", "?")
+        op = node.get("op", "?")
+        expected = params.get(node["param"]) if "param" in node else node.get("value")
+        failed.append(
+            f"{field} is {facts.get(field)!r}, needs to be {op} {expected!r}"
+        )
+    return failed or ["the runbook's preconditions do not hold for this incident"]
+
+
+async def _preconditions_hold(
+    spec: Any,
+    task_text: str,
+    incident: dict[str, Any],
+    rules: dict[str, Any],
+    fast: FastClient,
+) -> dict[str, Any]:
+    """Does this runbook apply here? Deterministically, wherever it can.
+
+    A compiled predicate is evaluated directly and no model is called. That is
+    the difference between a reuse path that re-asks the same question on every
+    run and one that answers it identically every time, and it removes a round
+    trip from the path whose entire purpose is being fast.
+
+    UNKNOWN counts as satisfied, matching what the prose check already did
+    deliberately. This is a routing decision, not a safety gate: policy is
+    enforced downstream and independently by `check_remediation_eligibility`, so
+    failing closed here buys no safety and costs the reuse.
+    """
+    predicate = getattr(spec, "precondition_predicate", None)
+
+    facts: dict[str, Any] = dict(incident) if isinstance(incident, dict) else {}
+    deployed_at = facts.get("deploy_timestamp")
+    if isinstance(deployed_at, str) and deployed_at:
+        try:
+            parsed = datetime.fromisoformat(deployed_at)
+            now = datetime.now(parsed.tzinfo or UTC)
+            facts["deploy_age_hours"] = round((now - parsed).total_seconds() / 3600, 1)
+        except ValueError:
+            log.debug("could not derive deploy age from %r", deployed_at)
+
+    if predicate:
+        from .policy import PredicateError, evaluate_condition
+
+        try:
+            verdict = evaluate_condition(predicate, facts, _policy_params(rules))
+        except PredicateError as exc:
+            # Validated at compile time, so this is close to unreachable. Say so
+            # rather than silently falling back to the slow path.
+            log.warning("compiled predicate failed to evaluate: %s", exc)
+        else:
+            if verdict is False:
+                return {
+                    "ok": False,
+                    "failed": _explain_predicate_miss(predicate, facts, rules),
+                    "checked_by": "predicate",
+                }
+            return {"ok": True, "failed": [], "checked_by": "predicate"}
+
+    # No compiled predicate: a runbook from before this existed, an imported
+    # one, or a spec whose predicate did not survive validation. Read the prose.
+    result = await fast.check_precondition(
+        spec.model_dump() if hasattr(spec, "model_dump") else spec,
+        task_text,
+        facts,
+        rules,
+    )
+    result["checked_by"] = "model"
+    return result
+
+
 async def _guided_mode(
     task_id: UUID,
     task_text: str,
@@ -408,14 +522,17 @@ async def _guided_mode(
 ) -> tuple[str, str | None, list[dict[str, Any]]]:
     """Warm path: replay a known-good plan with fresh parameters.
 
-    No planner in the loop — that is where the speedup comes from. A
-    precondition miss is not a failure of the playbook, so it falls back to
-    explore rather than counting against confidence.
+    No model in the loop at all — that is where the speedup comes from, and
+    since the preconditions became predicates it is literally true rather than
+    nearly true: retrieval is a vector index, freshness is a join, and the
+    precondition check is an evaluation. A precondition miss is not a failure of
+    the playbook, so it falls back to explore rather than counting against
+    confidence.
     """
     from .confidence import update_confidence
 
     spec = playbook.spec
-    fast = FastClient()
+    fast = FastClient()  # only reached when a runbook has no compiled predicate
 
     incident_id = _incident_from(task_text)
     incident = {}
@@ -427,35 +544,7 @@ async def _guided_mode(
     # alone, and an unevaluable precondition was being read as a violation.
     rules = await TOOL_MAP["get_rules"](domain="incident", db=db)
 
-    # And so does the arithmetic.
-    #
-    # The compiler is told to write preconditions about policy shape rather than
-    # frozen thresholds, which produces text like "the deploy is recent enough
-    # for the rollback window to permit rollback". Deciding that from a raw ISO
-    # timestamp and a rule saying `hours: 24` is a date subtraction, and the
-    # model gets it wrong often enough to matter: retrieval hits, the
-    # precondition misses, reuse silently dies and the run goes cold. Handing it
-    # the derived age turns a calculation into a comparison.
-    facts = dict(incident) if isinstance(incident, dict) else {}
-    deployed_at = facts.get("deploy_timestamp")
-    if isinstance(deployed_at, str) and deployed_at:
-        try:
-            from datetime import UTC, datetime
-
-            parsed = datetime.fromisoformat(deployed_at)
-            now = datetime.now(parsed.tzinfo or UTC)
-            facts["deploy_age_hours"] = round(
-                (now - parsed).total_seconds() / 3600, 1
-            )
-        except ValueError:
-            log.debug("could not derive deploy age from %r", deployed_at)
-
-    precondition = await fast.check_precondition(
-        spec.model_dump(),
-        task_text,
-        facts,
-        rules,
-    )
+    precondition = await _preconditions_hold(spec, task_text, incident, rules, fast)
     if not precondition.get("ok", True):
         failed = precondition.get("failed", [])
         log.info(

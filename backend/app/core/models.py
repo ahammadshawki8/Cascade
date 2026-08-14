@@ -117,6 +117,17 @@ class PlaybookSpec(BaseModel):
     # Human procedure text, for imported runbooks. Not executable, and not
     # offered to guided mode — see retrieval._phase2_pk_filter.
     manual_steps: list[str] = Field(default_factory=list, max_length=64)
+    # The machine-checkable form of `preconditions`.
+    #
+    # The prose above is for a person reading the runbook. This is what actually
+    # decides whether it applies, and it is the difference between a reuse path
+    # that asks a model the same question on every run and one that evaluates a
+    # predicate. Written once at compile time, validated there, and from then on
+    # deterministic: the same incident gets the same answer forever.
+    #
+    # Null means the compiler could not produce a valid one, and the executor
+    # falls back to asking a model. See executor._preconditions_hold.
+    precondition_predicate: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -106,3 +106,18 @@
   line-height: 1.55;
   color: var(--text-dim);
 }
+
+/* How long each one takes. Stated up front because "one minute" and "an
+   afternoon" are the difference between starting and closing the tab. */
+.effort {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-faint);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+
+.itemTitle { display: flex; align-items: center; }
