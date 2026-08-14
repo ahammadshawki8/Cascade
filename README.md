@@ -24,8 +24,8 @@ Last updated: August 15, 2026
 |---|---|
 | Integration suite | **109 passed, 0 failed, 1 skipped**, against a live CockroachDB Cloud cluster |
 | Serving | **Amazon Bedrock** end to end: Claude Sonnet 4.6 (planner), Claude Haiku 4.5 (fast path), Titan Text Embeddings v2 |
-| Measured speedup | **4.03x** (cold 15,150 ms, guided 3,761 ms), n=3 each, on Bedrock |
-| Planner tokens avoided | **8,030 per reuse**, down to zero |
+| Measured speedup | **11.45x** (cold 13,158 ms, guided 1,149 ms), n=3 each, on Bedrock |
+| Planner tokens avoided | **7,469 per reuse**, down to zero |
 | Unlearn transaction | **4 writes**, fixed, whatever depends on the rule |
 | Survivability | `SURVIVE ZONE FAILURE`, 3 voting replicas across separate AWS availability zones |
 | Deployment | **live** on ECS Fargate, Lambda, SQS, S3, Secrets Manager, CloudFront and Amplify |
@@ -467,10 +467,10 @@ runs and three reuses, one of each incident kind.
 
 | Metric | Measured |
 |---|---|
-| Cold run (explore) | 15,150 ms, 4.7 steps, 8,030 planner tokens |
-| Guided run (reuse) | 3,761 ms, 4.3 steps, **0 planner tokens** |
-| Guided versus cold | **4.03x faster** |
-| Planner tokens avoided per reuse | **8,030**, to zero |
+| Cold run (explore) | 13,158 ms, 4.7 steps, 7,469 planner tokens |
+| Guided run (reuse) | 1,149 ms, 4.3 steps, **0 planner tokens** |
+| Guided versus cold | **11.45x faster** |
+| Planner tokens avoided per reuse | **7,469**, to zero |
 | Unlearn transaction | **4 writes**, fixed |
 | Vector retrieval | index confirmed by live `EXPLAIN`, in the app at `/architecture` |
 

@@ -20,7 +20,7 @@ blocked only on AWS credentials**
 | Frontend | builds clean, TypeScript passes |
 | Lint | 6 cosmetic findings, all in contract-frozen files |
 | Deployment | scripts written & syntax-checked, **not yet executed** |
-| **Live providers** | **Bedrock** end to end (Sonnet 4.6 · Haiku 4.5 · Titan v2) · **cold 15.1s → guided 3.8s, 4.03×**, n=3 each |
+| **Live providers** | **Bedrock** end to end (Sonnet 4.6 · Haiku 4.5 · Titan v2) · **cold 13.2s → guided 1.1s, 11.45×**, n=3 each |
 
 **Single source of truth.** This file supersedes any other progress notes.
 
@@ -63,7 +63,7 @@ Not "written". Verified, with the evidence named.
 | Docs site | ✅ 16 pages at `/docs`, 16 Mermaid diagrams, copy buttons |
 | README | ✅ rewritten Aug 5, pure ASCII, every number re-verified against the code |
 | LLM providers | ✅ Groq + HuggingFace + OpenRouter all live-tested, incl. tool calling |
-| Latency claim | ✅ **4.03×** measured (15,150 ms → 3,761 ms) on **Bedrock**, n=3 each side |
+| Latency claim | ✅ **11.45×** measured (13,158 ms → 1,149 ms) on **Bedrock**, n=3 each side |
 | Repo | ✅ merged into one tree, 3 commits pushed to `ahammadshawki8/Cascade` |
 
 ### What is NOT done
@@ -75,7 +75,7 @@ Not "written". Verified, with the evidence named.
 | 3 | **Deployment** (`infra/01`–`07`) | AWS credentials | scripts are written and syntax-checked but **have never been executed** |
 | 4 | **CockroachDB Cloud cluster** | nothing. The `CCDB1_` key exists and authenticates, but **0 clusters are provisioned** | `infra/01`, or the Cloud console |
 | 5 | **Re-prove the vector index on Cloud** | a Cloud cluster | `GET /api/admin/verify-index` |
-| 6 | ~~Re-measure latency on Bedrock~~ | ✅ done Aug 14 | **4.03×**, and 8,030 planner tokens → 0 |
+| 6 | ~~Re-measure latency on Bedrock~~ | ✅ done Aug 15 | **11.45×**, and 7,469 planner tokens → 0 |
 | 7 | **Demo video** | nothing | demo sequence is scripted below |
 | 8 | **Devpost submission** | the video | deadline **Aug 16, 2026** |
 
@@ -127,7 +127,7 @@ embeddings**, against local CockroachDB:
 | wall clock | **6,561 ms** | **1,981 ms** |
 | steps | 4 | 4 |
 
-**speedup 4.03× on Bedrock**, 8,030 tokens
+**speedup 11.45× on Bedrock**, 7,469 tokens
 avoided per reuse. This supersedes the old warning: the earlier "guided is
 slower" reading was an artefact of the local planner having no model latency to
 save. Quote 3.3×, and say it was measured on Groq, not Bedrock.
@@ -573,7 +573,7 @@ curl -N https://<cloudfront>/api/events          # must stream, not buffer
 
 - [ ] Re-prove the vector index on Cloud → append to `docs/query-plans.md`
 - [ ] Re-measure cold vs guided on Bedrock → update README + this file
-      (**4.03× on Bedrock**, measured Aug 14 on the deployed stack)
+      (**11.45× on Bedrock**, measured Aug 15 on the deployed stack)
 - [ ] Run Agent Skills against the Cloud cluster → append to `docs/skills-review.md`
 - [ ] Record the 3-minute demo video
 - [ ] Devpost submission
@@ -705,7 +705,7 @@ TTL scoping · generalization lineage · all 11 contract signatures.
 | # | Risk | Status |
 |---|------|--------|
 | 1 | **Bedrock unavailable** | 🟡 Downgraded. Groq + HuggingFace now serve the full loop, so the engine is *not* on the local planner. Only the "runs on Bedrock" claim is unproven |
-| 2 | **Latency figure** | ✅ Resolved. **4.03×** on Bedrock (15,150ms → 3,761ms), n=3 each. Tokens 8,030 → 0 |
+| 2 | **Latency figure** | ✅ Resolved. **11.45×** on Bedrock (13,158ms → 1,149ms), n=3 each. Tokens 7,469 → 0. Improved from 4.03× when the precondition check stopped being a model call |
 | 3 | **Vector index on Cloud** | ⚠️ Verified locally; must be re-proven on the Cloud cluster |
 | 4 | **No authentication** | ⚠️ By design for the demo. Gate with `DEMO_PASSWORD` if the link goes wide |
 | 5 | **Deployment never executed** | ⚠️ Scripts syntax-checked only; first run will surface AWS-side surprises |
@@ -766,7 +766,7 @@ reading four commits of diff.
    live-tested. Fixed a dead HuggingFace host, a no-longer-free OpenRouter
    model, an over-fitted compiler precondition that silently killed reuse, and
    two Copilot failures that only a real model produces. Latency claim became
-   real, and is now **4.03× on Bedrock**.
+   real, and is now **11.45× on Bedrock**.
 9. **UI honesty.** `/api/metrics` now reports the serving provider, and the
    degraded banner distinguishes "fallback provider, timings valid" from
    "local planner, timings meaningless". It previously claimed the local
