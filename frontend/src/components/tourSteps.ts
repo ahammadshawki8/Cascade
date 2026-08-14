@@ -11,6 +11,13 @@ import type { ViewId } from "./ActivityBar";
  * Steps advance on events the app really emits. A step with no `advanceOn` is
  * a reading step and gets a Next button; everything else waits for the system.
  *
+ * A waiting step must never depend on a *successful* outcome. `run:reused`
+ * fires on one of four things a run can do, so a step waiting only for that one
+ * hangs forever the moment retrieval hits and the precondition check misses,
+ * which is a real and recurring possibility because compiled preconditions are
+ * model output. Every waiting step therefore also accepts an event that fires
+ * whatever happens.
+ *
  * Every run is two steps, always the same shape: click the incident, then hand
  * over to the floating window. The spotlight blocks whatever it does not cover,
  * so a single step pointing at the card would leave the viewer unable to open
@@ -49,7 +56,11 @@ export interface TourStep {
    * screen means eleven ways to take the tour somewhere it did not plan for.
    */
   reveal?: string[];
-  advanceOn?: TourEvent;
+  /**
+   * Advance when any of these fires. Order does not matter; the first to
+   * arrive wins. Always include one that fires regardless of outcome.
+   */
+  advanceOn?: TourEvent | TourEvent[];
   action?: string;
   waitingLabel?: string;
   nextLabel?: string;
@@ -130,7 +141,11 @@ export const TOUR: TourStep[] = [
       "No planner ran. These are the steps it worked out last time, re-bound to this incident's parameters.",
     target: '[data-tour="island"]',
     reveal: ["INC-1002"],
-    advanceOn: "run:reused",
+    // `run:finished` is the safety net. If the runbook is matched and then
+    // refused on preconditions, reuse never happens and `run:reused` never
+    // fires; the window says so plainly, and the tour has to be able to
+    // continue rather than wait for an event that is not coming.
+    advanceOn: ["run:reused", "run:finished"],
     action: "Click the pill and watch the top lane",
     waitingLabel: "Searching memory, then replaying",
   },

@@ -222,7 +222,12 @@ export default function CascadeApp() {
   const fireTour = useCallback(
     (event: TourEvent) => {
       setTourStep((i) => {
-        if (i == null || TOUR[i]?.advanceOn !== event) return i;
+        if (i == null) return i;
+        const wanted = TOUR[i]?.advanceOn;
+        const accepts = Array.isArray(wanted)
+          ? wanted.includes(event)
+          : wanted === event;
+        if (!accepts) return i;
         const next = i + 1 >= TOUR.length ? null : i + 1;
         queueMicrotask(() => goToStep(next));
         return i;

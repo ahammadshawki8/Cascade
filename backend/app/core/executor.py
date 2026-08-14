@@ -427,10 +427,33 @@ async def _guided_mode(
     # alone, and an unevaluable precondition was being read as a violation.
     rules = await TOOL_MAP["get_rules"](domain="incident", db=db)
 
+    # And so does the arithmetic.
+    #
+    # The compiler is told to write preconditions about policy shape rather than
+    # frozen thresholds, which produces text like "the deploy is recent enough
+    # for the rollback window to permit rollback". Deciding that from a raw ISO
+    # timestamp and a rule saying `hours: 24` is a date subtraction, and the
+    # model gets it wrong often enough to matter: retrieval hits, the
+    # precondition misses, reuse silently dies and the run goes cold. Handing it
+    # the derived age turns a calculation into a comparison.
+    facts = dict(incident) if isinstance(incident, dict) else {}
+    deployed_at = facts.get("deploy_timestamp")
+    if isinstance(deployed_at, str) and deployed_at:
+        try:
+            from datetime import UTC, datetime
+
+            parsed = datetime.fromisoformat(deployed_at)
+            now = datetime.now(parsed.tzinfo or UTC)
+            facts["deploy_age_hours"] = round(
+                (now - parsed).total_seconds() / 3600, 1
+            )
+        except ValueError:
+            log.debug("could not derive deploy age from %r", deployed_at)
+
     precondition = await fast.check_precondition(
         spec.model_dump(),
         task_text,
-        incident if isinstance(incident, dict) else {},
+        facts,
         rules,
     )
     if not precondition.get("ok", True):

@@ -255,3 +255,28 @@
   gap: 3px;
   min-width: 0;
 }
+
+/* Elapsed seconds beside the spinner: a wait with a number on it reads as
+   progress, a wait without one reads as a hang. */
+.elapsed {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* Last-resort escape from a step whose event never arrived. */
+.unstick {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--st-suspect);
+  background: transparent;
+  color: var(--st-suspect);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.unstick:hover { background-color: rgba(230, 168, 74, 0.12); }

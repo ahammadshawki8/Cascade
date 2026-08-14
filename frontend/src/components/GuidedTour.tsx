@@ -59,6 +59,31 @@ export function GuidedTour({
   const cardRef = useRef<HTMLDivElement>(null);
 
   /**
+   * How long this step has been waiting.
+   *
+   * A cold run against Bedrock is fifteen to thirty seconds, and a spinner with
+   * no number attached is indistinguishable from a hang after about eight of
+   * them. Showing the count turns "is this broken?" into "it is working, this
+   * one is slow", which is the difference between waiting and giving up.
+   */
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    setElapsed(0);
+    if (!waiting) return;
+    const started = Date.now();
+    const timer = setInterval(
+      () => setElapsed(Math.round((Date.now() - started) / 1000)),
+      1000
+    );
+    return () => clearInterval(timer);
+  }, [waiting, index]);
+
+  // Long enough that it never appears on a healthy run, short enough that
+  // nobody sits staring at a dead card.
+  const stuck = waiting && elapsed >= 45;
+
+  /**
    * The target moves: panels re-render, lists grow, the island slides in. So
    * the hole is re-measured continuously rather than once per step — a
    * spotlight pointing at where a button *used to be* is worse than no
@@ -233,7 +258,21 @@ export function GuidedTour({
                 <span className={styles.waiting}>
                   <Loader2 size={13} className={styles.spin} />
                   {step.waitingLabel ?? "Waiting for that to finish"}
+                  {elapsed >= 15 && (
+                    <span className={styles.elapsed}>{elapsed}s</span>
+                  )}
                 </span>
+              )}
+              {/* The last resort. Every waiting step accepts an event that
+                  fires whatever the outcome, so this should never be needed —
+                  but "should never" is not a thing to leave a reviewer stranded
+                  on, and a walkthrough that cannot be advanced is worse than
+                  one that admits it lost the thread. */}
+              {stuck && (
+                <button className={styles.unstick} onClick={onAdvance}>
+                  Continue anyway
+                  <ArrowRight size={12} />
+                </button>
               )}
             </span>
           ) : preparing ? (
