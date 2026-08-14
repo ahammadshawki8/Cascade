@@ -37,6 +37,10 @@ log = logging.getLogger(__name__)
 # claim: it does not grow with how many playbooks depend on the rule.
 _WRITES_PER_CASCADE = 4
 
+# "Leave this as it is." Distinct from None, which is a legitimate value for a
+# predicate and means "this rule gates nothing".
+KEEP: Any = object()
+
 
 async def change_rule(
     rule_key: str,
@@ -47,13 +51,23 @@ async def change_rule(
     interrupt_bus=None,
     sse_bus=None,
     sqs_client=None,
+    new_predicate: Any = KEEP,
+    new_enforcement: Any = KEEP,
 ) -> ImpactResult:
-    """Version a rule forward and report what it invalidated."""
+    """Version a rule forward and report what it invalidated.
+
+    How a rule decides is versioned exactly like what it says. Changing a
+    predicate is a policy change in the fullest sense — a procedure compiled
+    while the old one was in force may now be acting on a rule that no longer
+    means what it did — so it moves through this same transaction and
+    invalidates the same dependents. Anything else would leave a class of policy
+    change that silently kept stale procedures looking fresh.
+    """
 
     async def txn(cur):
         await cur.execute(
             """
-            SELECT version, domain
+            SELECT version, domain, predicate, enforcement
             FROM rules
             WHERE rule_key = %s AND valid_to IS NULL
             """,
@@ -68,16 +82,36 @@ async def change_rule(
         new_version = old_version + 1
         event_id = uuid4()
 
+        # Carried forward unless explicitly replaced. A caller that only knows
+        # about body and params — every caller that predates migration 006 —
+        # must not silently drop a rule's ability to decide anything.
+        predicate = current.get("predicate") if new_predicate is KEEP else new_predicate
+        enforcement = (
+            (current.get("enforcement") or "advisory")
+            if new_enforcement is KEEP
+            else new_enforcement
+        )
+
         await cur.execute(
             "UPDATE rules SET valid_to = now() WHERE rule_key = %s AND version = %s",
             (rule_key, old_version),
         )
         await cur.execute(
             """
-            INSERT INTO rules (rule_key, version, domain, body, params, changed_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO rules (rule_key, version, domain, body, params, changed_by,
+                               predicate, enforcement)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (rule_key, new_version, domain, new_body, json.dumps(new_params), actor),
+            (
+                rule_key,
+                new_version,
+                domain,
+                new_body,
+                json.dumps(new_params),
+                actor,
+                json.dumps(predicate) if predicate is not None else None,
+                enforcement,
+            ),
         )
         await cur.execute(
             "INSERT INTO outbox (event_id, kind, payload) VALUES (%s, %s, %s)",

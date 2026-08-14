@@ -11,6 +11,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -40,15 +41,34 @@ _CLEAR_ORDER = (
     "episodes",
     "approvals",
     "tasks",
-    "playbook_deps",
-    "playbooks",
     "outbox",
     "insights",
     "mock_action_log",
     "mock_incidents",
     "mock_services",
-    "rules",
 )
+
+# Never cleared. These are the things a user brought with them, and a button
+# labelled "reset the demo" that silently deleted the Slack connection someone
+# had just wired up, or the API key their editor is holding, would be a bug
+# whatever the tooltip said.
+#
+#   connections, api_keys      configuration, not demo state
+#   connector_calls            the idempotency ledger; losing it would let a
+#                              replayed step page someone a second time
+#   agent_activity, audit_log  the record of what was done, which survives the
+#                              world being restored (spec 3.4)
+_PRESERVED_TABLES = (
+    "connections",
+    "connector_calls",
+    "api_keys",
+    "agent_activity",
+    "audit_log",
+)
+
+# Procedures the user brought or wrote. Compiled and merged ones are learned
+# state and go back in the box; these do not.
+_PRESERVED_ORIGINS = ("imported", "authored")
 
 
 def _stub_mode() -> bool:
@@ -74,10 +94,16 @@ def _seed_sql() -> str:
 
 @router.post("/admin/reset")
 async def reset_world(principal: Principal = Depends(require_admin)):
-    """Clear learned state and re-seed the v1 world.
+    """Restore the sample world. Keep everything the user made.
+
+    The demo and the product live in one database on purpose — there is no
+    second copy of the engine for "real" data, and pretending otherwise with a
+    workspace switcher would imply an isolation guarantee this does not have.
+    What makes them coexist is that this button is scoped: it restores the
+    sample and touches nothing else.
 
     Everything happens in one transaction so a failed reset cannot leave the
-    demo half-wiped — the previous implementation replayed the seed's INSERTs
+    demo half-wiped — an earlier implementation replayed the seed's INSERTs
     without clearing first, which collided on primary keys the moment it had
     ever been run.
     """
@@ -91,23 +117,102 @@ async def reset_world(principal: Principal = Depends(require_admin)):
     from app.db import pool
 
     seed = _seed_sql()
+    kept_procedures = 0
+    kept_rules = 0
 
     async with pool().connection() as conn:
         await conn.set_autocommit(False)
         try:
             async with conn.cursor() as cur:
+                # A seeded rule is one whose first version the seed wrote. Read
+                # rather than hardcoded so this cannot drift from 002_seed.sql.
+                await cur.execute(
+                    "SELECT rule_key FROM rules WHERE version = 1 AND changed_by = 'system'"
+                )
+                sample_keys = [r["rule_key"] for r in await cur.fetchall()]
+
+                # Provenance of the procedures that are about to survive. Their
+                # edges have to be dropped before the rules they point at can
+                # be deleted, and rebuilt afterwards against the restored head.
+                # Re-pinning is the semantically right answer, not a repair: if
+                # policy has gone back to v1, a surviving procedure cites v1.
+                await cur.execute(
+                    """
+                    SELECT d.playbook_id, d.rule_key, d.citation, d.extraction_confidence
+                    FROM playbook_deps d
+                    JOIN playbooks p ON p.playbook_id = d.playbook_id
+                    WHERE p.origin = ANY(%s)
+                    """,
+                    (list(_PRESERVED_ORIGINS),),
+                )
+                surviving_deps = [dict(r) for r in await cur.fetchall()]
+
                 for table in _CLEAR_ORDER:
                     await cur.execute(f"DELETE FROM {table} WHERE true")
+
+                await cur.execute("DELETE FROM playbook_deps WHERE true")
+                await cur.execute(
+                    "DELETE FROM playbooks WHERE origin != ALL(%s)",
+                    (list(_PRESERVED_ORIGINS),),
+                )
+                await cur.execute(
+                    "SELECT count(*)::INT AS n FROM playbooks",
+                )
+                kept_procedures = (await cur.fetchone())["n"]
+
+                # User-authored rules are not sample data and are left alone.
+                await cur.execute(
+                    "DELETE FROM rules WHERE rule_key = ANY(%s)", (sample_keys,)
+                )
+                await cur.execute("SELECT count(*)::INT AS n FROM rules")
+                kept_rules = (await cur.fetchone())["n"]
+
                 # The seed file carries its own BEGIN/COMMIT; strip them so it
                 # nests inside this transaction instead of ending it early.
                 await cur.execute(_strip_txn(seed))
+
+                # Re-pin the survivors to whatever is now head. A dep whose rule
+                # no longer exists at all is dropped rather than resurrected.
+                for dep in surviving_deps:
+                    await cur.execute(
+                        "SELECT version FROM rules WHERE rule_key = %s AND valid_to IS NULL",
+                        (dep["rule_key"],),
+                    )
+                    head = await cur.fetchone()
+                    if head is None:
+                        continue
+                    await cur.execute(
+                        """
+                        INSERT INTO playbook_deps (playbook_id, rule_key, rule_version,
+                                                   citation, extraction_confidence)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (
+                            str(dep["playbook_id"]),
+                            dep["rule_key"],
+                            head["version"],
+                            dep["citation"],
+                            dep["extraction_confidence"],
+                        ),
+                    )
+
                 # audit_log deliberately survives a reset (spec §3.4), but
                 # /api/metrics derives retrieval hit-rate from audit events.
                 # This marker is the boundary those counts start from, so a
                 # reset yields a clean hit-rate without erasing the history.
                 await cur.execute(
                     "INSERT INTO audit_log (kind, actor, details) "
-                    "VALUES ('world.reset', 'admin', '{}')"
+                    "VALUES ('world.reset', %s, %s)",
+                    (
+                        principal.identity,
+                        json.dumps(
+                            {
+                                "kept_procedures": kept_procedures,
+                                "kept_rules": kept_rules,
+                            }
+                        ),
+                    ),
                 )
             await conn.commit()
         except Exception:
@@ -116,10 +221,29 @@ async def reset_world(principal: Principal = Depends(require_admin)):
         finally:
             await conn.set_autocommit(True)
 
-    log.info("world reset — clean v1 state restored")
+    log.info(
+        "world reset — sample restored, kept %d procedure(s) and %d user rule(s)",
+        kept_procedures,
+        kept_rules,
+    )
+    message = "Sample world restored: 4 rules, 6 services, 12 incidents."
+    if kept_procedures or kept_rules:
+        parts = []
+        if kept_procedures:
+            parts.append(
+                f"{kept_procedures} imported procedure"
+                + ("s" if kept_procedures != 1 else "")
+            )
+        if kept_rules:
+            parts.append(f"{kept_rules} rule" + ("s" if kept_rules != 1 else "") + " you wrote")
+        message += " Kept " + " and ".join(parts) + ", plus your connections and keys."
+
     return {
         "status": "ok",
-        "message": "Demo world reset to v1: 4 rules, 6 services, 12 incidents.",
+        "message": message,
+        "kept_procedures": kept_procedures,
+        "kept_rules": kept_rules,
+        "preserved": list(_PRESERVED_TABLES),
     }
 
 

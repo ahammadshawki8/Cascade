@@ -99,11 +99,14 @@ def create_app() -> FastAPI:
         admin,
         approvals,
         architecture,
+        connections,
         copilot,
         events,
         intelligence,
+        memory,
         metrics,
         playbooks,
+        procedures,
         rules,
         tasks,
     )
@@ -118,6 +121,12 @@ def create_app() -> FastAPI:
     app.include_router(approvals.router,    prefix="/api", tags=["approvals"])
     app.include_router(intelligence.router, prefix="/api", tags=["intelligence"])
     app.include_router(architecture.router, prefix="/api", tags=["architecture"])
+    app.include_router(procedures.router,   prefix="/api", tags=["procedures"])
+    app.include_router(connections.router,  prefix="/api", tags=["connections"])
+    # The one surface built for callers who are not this app. Keyed separately:
+    # everything else here trusts the browser session or a shared token, and
+    # this trusts a per-agent credential with scopes.
+    app.include_router(memory.router,       prefix="/api", tags=["memory"])
 
     # Internal bridge: Lambda → API SSE (no /api prefix)
     app.include_router(events.internal_router, tags=["internal"])

@@ -204,6 +204,16 @@ async def _phase2_pk_filter(
     candidates: list[PlaybookCandidate] = []
     for row in rows:
         pid = _as_uuid(row["playbook_id"])
+        spec = _parse_spec(row["spec"])
+
+        # An imported procedure is governed, not executed: its steps are prose a
+        # human performs, so there is nothing for guided mode to replay. Letting
+        # one win retrieval would hand the executor an empty plan and call the
+        # result a reuse. Filtered here rather than in phase 1, where any scalar
+        # predicate at all costs the vector index (D3).
+        if not getattr(spec, "steps", None):
+            continue
+
         candidates.append(
             PlaybookCandidate(
                 playbook_id=pid,
@@ -212,7 +222,7 @@ async def _phase2_pk_filter(
                 confidence=float(row["confidence"]),
                 distance=distances.get(pid, float("inf")),
                 status_cache=row["status_cache"],
-                spec=_parse_spec(row["spec"]),
+                spec=spec,
             )
         )
 

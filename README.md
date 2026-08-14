@@ -11,13 +11,18 @@ is a join, not a column.
 An agent produces the procedures. That part is ordinary, and it is the last
 thing in this README for a reason.
 
+You can also use it without adopting the agent at all. Import the runbooks you
+already have, write policy rules of your own, and let your own agent ask
+whether what it remembers is still valid. Those three are the product; the
+agent is one consumer of it.
+
 CockroachDB x AWS Hackathon submission
 Ashfaq (Track A, shell) and Shawki (Track B, core engine)
-Last updated: August 14, 2026
+Last updated: August 15, 2026
 
 | | |
 |---|---|
-| Integration suite | **80 passed, 0 failed, 1 skipped**, against a live CockroachDB Cloud cluster |
+| Integration suite | **103 passed, 0 failed, 1 skipped**, against a live CockroachDB Cloud cluster |
 | Serving | **Amazon Bedrock** end to end: Claude Sonnet 4.6 (planner), Claude Haiku 4.5 (fast path), Titan Text Embeddings v2 |
 | Measured speedup | **4.03x** (cold 15,150 ms, guided 3,761 ms), n=3 each, on Bedrock |
 | Planner tokens avoided | **8,030 per reuse**, down to zero |
@@ -90,29 +95,30 @@ docker run -d --name cascade-crdb \
   cockroachdb/cockroach:latest start-single-node --insecure
 ```
 
-### 2. Apply the five migrations, in order
+### 2. Apply the six migrations, in order
 
 `001` creates the schema and the vector index, `002` seeds policy and twelve
 demo incidents, `003` adds negative memory, `004` adds retention and merge
-lineage, `005` retains the step detail behind each run.
+lineage, `005` retains the step detail behind each run, and `006` turns policy
+into data and adds connections, agent keys and the connector ledger.
 
 ```bash
 cd backend
 
-for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail; do
+for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail \n         006_platform; do
   docker cp migrations/$f*.sql cascade-crdb:/tmp/$f.sql
 done
 
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
 
-for f in 001 002 003 004 005; do
+for f in 001 002 003 004 005 006; do
   docker exec cascade-crdb ./cockroach sql --insecure \
     --database=cascade --file=//tmp/$f.sql
 done
 ```
 
-Expect 14 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
+Expect 19 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
 vector index. `infra/02_migrate.sh` does the same against a remote cluster.
 
 ### 3. Configure
@@ -171,6 +177,122 @@ Chat falls back `bedrock, groq, openrouter, local`. Embeddings fall back
 `bedrock, huggingface, local`. The two chains are independent, so chat can be
 live while embeddings are not. Press `Ctrl-K` and run **Check which LLM
 provider is serving** to see which is which, or call `/api/admin/smoke`.
+
+---
+
+## Using it on your own material
+
+Everything the walkthrough shows runs on sample data that ships with the
+product. These four take a couple of minutes each and run on yours. The console
+tracks them under **Make it yours** in the Work view, and each one is checked
+off by reading real state rather than by remembering that a button was pressed.
+
+### Write a policy rule of your own
+
+**Policy** then **New rule**. Pick a field, an operator and a value, say what
+the refusal should read, and choose whether it binds:
+
+| Mode | What it does |
+|---|---|
+| Advisory | Cited and versioned. Invalidates procedures when it changes. Blocks nothing. |
+| Shadow | Evaluated and recorded, but does not block. Use it to see what a rule would have refused before letting it refuse anything. |
+| Enforcing | Blocks the action when it fails. |
+
+**Try it against the incidents** runs the candidate rule over the incident set
+and reports exactly which ones it would refuse, using the same evaluator the
+engine uses, so the preview cannot flatter the rule.
+
+Until August 2026 this was impossible, and it would not have meant anything if
+it had been: the eligibility check named three rule keys in Python, so a rule
+you invented was stored, versioned, cascaded and correctly reported stale while
+being enforced by nothing. Policy is now data, and the evaluator applies
+whatever rules exist. The proof that the change was faithful is that the whole
+pre-existing suite passes unchanged against rules that are now rows.
+
+Advisory mode matters more than it looks. Staleness detection never needed a
+predicate, only provenance, so you can paste in fifty policies as advisory in
+an afternoon and get the entire runbook-rot product working the same day.
+
+### Import a runbook you already have
+
+**Procedures** then **Import a runbook**. Paste it in whatever shape it is
+already in. Cascade reads it and proposes which policy rules it depends on,
+each with the sentence it was drawn from, and nothing is written until you
+confirm.
+
+The confirmation is not ceremony. Linking sentences to policy is model output,
+and a wrong citation would not fail loudly, it would quietly make a procedure
+look governed while never going stale. A procedure with no citations is
+refused outright for the same reason.
+
+Imported procedures are governed, not executed. Their steps are prose a human
+performs, so they are searchable and they go stale by exactly the same join as
+a compiled runbook, but retrieval will never hand one to the executor.
+
+### Send the result to Slack
+
+**Connections** then **Connect an app**. Paste a Slack incoming webhook URL
+(Discord and bare webhooks work too, and Discord needs no app and no admin
+approval if your Slack workspace blocks installs). **Send test** delivers a
+real message and reports the status code and latency it got back.
+
+From then on, when the agent notifies on-call the message lands in the channel
+as well as in the demo log. The mock world is layered under it rather than
+replaced, so the seeded demo keeps working with nothing configured.
+
+The safety property is the interesting part. Approving a gated action resumes
+the task by re-running it, which is only safe because every side-effecting step
+is idempotent on `{task_id}:{step_index}`. Remote services are not trusted to
+honour an `Idempotency-Key` header, so `connector_calls` carries a unique
+constraint and a replayed step is suppressed from our own ledger. The
+connections list counts those suppressions, and the run trace shows them.
+
+Connections are `dry_run` until you deliberately make them live, calls time out
+at ten seconds, and three consecutive failures trip a breaker that escalates
+the run rather than blocking it.
+
+### Let your own agent ask
+
+**Connections** then **Create key**. Choose where it will run and you get a
+copy-paste block with the key already in it, plus the one command that
+downloads the connector. It has no dependencies, so downloading it is the whole
+install.
+
+Then, in your own editor:
+
+> is my rollback procedure still valid?
+
+```
+POST /api/memory/check
+{"citations": [{"rule_key": "incident.rollback_window", "rule_version": 1}]}
+
+-> {"valid": false,
+    "summary": "Not valid. incident.rollback_window moved from v1 to v2
+                (hours: 24 -> 4). Re-derive the procedure before acting on it."}
+```
+
+No planner, no execution, no coupling to how the caller works. An agent with a
+completely different toolset can use this, which is why it is the piece worth
+exposing. Change the rule in Cascade, ask again, and the answer changes, with
+the version, the parameter delta and who moved it.
+
+Keys are hashed, scoped (`memory:read`, `memory:write`, `runs:write`) and
+revocable. Starting incidents is off by default: checking memory is read-only
+and starting a run is not.
+
+The console reacts while this happens. The key shows as live with a call count
+and a last-seen time, and **What agents have been asking** lists each check and
+its verdict. That is the evidence for a claim that would otherwise be a
+sentence in a README.
+
+### Restoring the sample world keeps all of it
+
+**Restore sample** puts the seeded rules, services and incidents back and
+clears what the agent learned. It does not touch the rules you wrote, the
+procedures you imported, your connections or your keys, and it re-pins your
+procedures' provenance to whatever policy is now head. Deleting someone's Slack
+connection because they asked to restore sample data would be a bug, not a
+feature.
 
 ---
 
@@ -365,7 +487,7 @@ invalidated. Run against the CockroachDB Cloud cluster:
 | 3,000 | **4** | 3,000 | 1,703 ms |
 | 50,000 | **4** | 50,000 | **1,583 ms** |
 
-Sixteen times the dependent set, and the cascade is *not slower* — the
+Sixteen times the dependent set, and the cascade is *not slower*. The
 difference between the two rows is network noise, because neither transaction
 touched a single runbook row. That is the claim, and it is the reason it is
 worth expressing staleness as a join.
@@ -389,7 +511,7 @@ couple of seconds of consensus and network.
 
 Reporting it that way was measuring the wrong thing. The claim D1 makes is not
 a latency budget, it is that **the write set does not grow with how much has
-been learned** — four writes whether one runbook depends on the rule or a
+been learned**: four writes whether one runbook depends on the rule or a
 hundred thousand. The integration suite now asserts the write count, which is
 the property, instead of a wall clock, which is the network.
 
@@ -455,7 +577,7 @@ at-least-once delivery and a worker dying mid-job are both survivable.
 
 ```bash
 cd backend
-python verify_integration.py          # 80 assertions, resets the world first
+python verify_integration.py          # 103 assertions, resets the world first
 python verify_integration.py --keep   # run against existing state
 ```
 
@@ -477,6 +599,11 @@ not reachable through the API without a race.
 | Triage, replay, time travel, graph | Semantics and integrity |
 | Copilot | Answers with visible SQL, rejects 4 injection attempts, allows a normal `created_at` read |
 | RBAC, TTL, generalization | Role ordering, retention scoping, merge lineage |
+| Predicates | A rule applies, refuses and abstains as written; a missing fact is unknown rather than silently false; malformed rules are refused at authoring time |
+| Rule authoring | **A rule nobody hardcoded gates the engine**, is recorded as provenance, and advisory and shadow modes block nothing |
+| Import | A pasted runbook yields name and steps, **one with no citations is refused**, human steps are kept, **an imported procedure never wins retrieval**, and it goes stale by the same join |
+| API keys | Scopes are enforced, the secret is never stored, revocation is immediate |
+| Connectors | Each destination gets its own payload shape, **a replayed step is suppressed rather than sent twice**, and a failing connection is skipped rather than retried forever |
 | Contract | All 11 signatures unchanged |
 
 Frontend:
@@ -556,7 +683,7 @@ backend/
   worker/                  6 job kinds
   migrations/              001 schema, 002 seed, 003 extensions, 004 production,
                            005 step detail
-  verify_integration.py    80 assertions
+  verify_integration.py    103 assertions
   run_local.py             Windows selector-loop launcher
 
 frontend/src/
@@ -615,10 +742,14 @@ Getting started, Using Cascade, Understanding it, and Reference.
 full learn, reuse, unlearn, refuse sequence runs end to end. Vector index proven
 by live `EXPLAIN`. Tier 1 through 3 features shipped. Interface rebuilt as a
 desktop application shell with a command palette. Documentation site written.
-80 of 80 assertions passing against the deployed stack on Bedrock.
+103 of 103 assertions passing against the deployed stack on Bedrock.
 
-**Blocked on AWS credentials.** Deploying, re-proving the vector index on a
-Cloud cluster, and re-measuring latency with Bedrock live.
+**Usable on your own material.** Policy is data rather than three hardcoded
+comparisons, so you can write rules the engine obeys. Runbooks you already have
+can be imported and grounded in that policy. Slack, Discord and bare webhooks
+receive real notifications with replay suppression proven against the ledger.
+Other agents can call the memory layer over HTTP or MCP with scoped, revocable
+keys.
 
 **Remaining.** Demo video, Devpost submission.
 

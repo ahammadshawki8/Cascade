@@ -283,4 +283,59 @@ regression-tested (`policy: an ineligible incident is never remediated`).
 
 ---
 
-*Last updated: August 4, 2026*
+## 13. `PlaybookSpec` bounds widened, and `manual_steps` added
+
+**Day-0 contract:** `preconditions` 1 to 6, `steps` 2 to 8, and every field of
+`PlaybookSpec` frozen as the compiler's output contract.
+
+**What was built:** `preconditions` up to 24, `steps` up to 64 with no minimum,
+and a new `manual_steps` list.
+
+**Why:** a runbook someone wrote in Confluence has as many steps as it has, and
+most of them are prose a human performs rather than tool calls this engine can
+make. Importing one was impossible under the old bounds, and importing is what
+makes the product useful to a team that has not adopted the agent.
+
+**Impact:** none on anything that parsed before. Widening a maximum cannot
+invalidate an existing document, and the compiler is still constrained by its
+own prompt and by `_safety_lint`. The `rule_citations` minimum of 1 was
+deliberately left alone: a procedure with no provenance can never be found
+stale, which would make the library quietly untrustworthy. An imported
+procedure therefore has zero executable steps and is filtered out of retrieval
+in `_phase2_pk_filter`, so it can be searched and governed but never replayed.
+
+## 14. A twelfth contract function, rather than a wider signature
+
+**Day-0 contract:** eleven functions in `contracts.py`, compared by exact
+signature in the assertion suite.
+
+**What was built:** `change_rule` keeps its exact four parameters and now
+carries a rule's predicate and enforcement mode forward unchanged.
+`change_rule_definition` and `create_rule` were added alongside it.
+
+**Why:** changing how a rule decides is a policy change in the fullest sense and
+has to move through the same cascade, but widening the frozen signature would
+break the contract assertion and every caller's expectation of what it accepts.
+Adding is additive; widening is not.
+
+**Impact:** none. All eleven original signatures still assert clean.
+
+## 15. `enforcement` is deliberately absent from the `get_rules` tool output
+
+**What happened:** adding one field to that tool's return value changed the
+compiled preconditions enough that a tier-3 incident stopped matching a runbook
+it had matched before. Retrieval hit, precondition miss, silent loss of reuse,
+and three autonomy assertions failed.
+
+**Why it stays out:** that output is the compiler's input as well as the
+planner's, so it is a model-shaped surface where any change is a behaviour
+change. The planner does not need the field, because policy binds through
+`check_remediation_eligibility` whatever `get_rules` says. It is exposed to
+humans and to external agents through the API instead.
+
+**Impact:** none, and one regression avoided. Recorded because the temptation to
+add it back will recur.
+
+---
+
+*Last updated: August 15, 2026*

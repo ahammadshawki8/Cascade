@@ -17,6 +17,11 @@ import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
+import { ConnectionsPanel } from "../components/ConnectionsPanel";
+import { RuleComposer } from "../components/RuleComposer";
+import { ImportProcedure } from "../components/ImportProcedure";
+import { MakeItYours, Progress } from "../components/MakeItYours";
+import { RightDock, DockTab } from "../components/RightDock";
 import { RunHistory } from "../components/RunHistory";
 import { narrateState } from "../components/narrate";
 import { GuidedTour } from "../components/GuidedTour";
@@ -57,6 +62,7 @@ function adaptPlaybook(raw: any): Playbook {
     success_count: raw.successes ?? 0,
     failure_count: raw.failures ?? 0,
     supersedes: raw.supersedes ?? null,
+    origin: raw.origin ?? "compiled",
     spec: {
       steps: raw.spec?.steps ?? [],
       preconditions: raw.spec?.preconditions ?? [],
@@ -76,10 +82,11 @@ const clockTime = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Pick one, watch it run, understand it, or invent your own. */
-type IncidentTab = "inbox" | "author";
+type WorkTab = "inbox" | "author" | "history";
+type SystemTab = "architecture" | "intelligence";
 
 export default function CascadeApp() {
-  const [view, setView] = useState<ViewId>("incidents");
+  const [view, setView] = useState<ViewId>("work");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   /**
@@ -101,7 +108,15 @@ export default function CascadeApp() {
   const [tourPreparing, setTourPreparing] = useState(false);
   // Opens on the inbox: a blank command box asks the viewer to already know
   // the incident ids and their exact format before anything can happen.
-  const [incidentTab, setIncidentTab] = useState<IncidentTab>("inbox");
+  const [workTab, setWorkTab] = useState<WorkTab>("inbox");
+  const [systemTab, setSystemTab] = useState<SystemTab>("architecture");
+  /** Copilot and approvals are consulted, not visited. */
+  const [dockOpen, setDockOpen] = useState(false);
+  const [dockTab, setDockTab] = useState<DockTab>("copilot");
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [checklistOff, setChecklistOff] = useState(false);
+  const [setup, setSetup] = useState({ myRules: 0, connections: 0, keys: 0 });
   /** A one-off line for the island to announce. */
   const [announce, setAnnounce] = useState<string | null>(null);
   /** Whichever run the island is currently describing. */
@@ -183,7 +198,7 @@ export default function CascadeApp() {
     const step = TOUR[next];
     if (step.view) {
       setView(step.view);
-      if (step.view === "incidents") setIncidentTab("inbox");
+      if (step.view === "work") setWorkTab("inbox");
     }
   }, []);
 
@@ -266,8 +281,34 @@ export default function CascadeApp() {
   const fetchRules = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/rules`);
-      if (res.ok) setRules((await res.json()).rules ?? []);
+      if (!res.ok) return;
+      const data = await res.json();
+      const next = data.rules ?? [];
+      setRules(next);
+      // "Did you write one of these yourself" is read from the data, not
+      // remembered from a button press, so the checklist cannot claim credit
+      // for something that did not happen — or lose it on a page reload.
+      setSetup((s) => ({ ...s, myRules: next.filter((r: any) => !r.sample).length }));
     } catch {}
+  }, []);
+
+  /** Counts that back the "Make it yours" checklist. */
+  const fetchSetup = useCallback(async () => {
+    const count = async (path: string, key: string) => {
+      try {
+        const res = await fetch(`${API_BASE}${path}`);
+        if (!res.ok) return 0;
+        const data = await res.json();
+        return (data[key] ?? []).length;
+      } catch {
+        return 0;
+      }
+    };
+    const [connections, keys] = await Promise.all([
+      count("/connections", "connections"),
+      count("/keys", "keys"),
+    ]);
+    setSetup((s) => ({ ...s, connections, keys }));
   }, []);
 
   const fetchApprovals = useCallback(async () => {
@@ -319,8 +360,16 @@ export default function CascadeApp() {
     fetchRules();
     fetchApprovals();
     fetchInsights();
+    fetchSetup();
     setRefreshKey((k) => k + 1);
-  }, [fetchMetrics, fetchPlaybooks, fetchRules, fetchApprovals, fetchInsights]);
+  }, [
+    fetchMetrics,
+    fetchPlaybooks,
+    fetchRules,
+    fetchApprovals,
+    fetchInsights,
+    fetchSetup,
+  ]);
 
   // ---------------------------------------------------------------------- sse
 
@@ -407,7 +456,8 @@ export default function CascadeApp() {
           ...prev,
         ]);
         // A gated action is the one moment the operator must not miss.
-        setView("approvals");
+        setDockTab("approvals");
+        setDockOpen(true);
         setToast("An action needs your approval.");
       } catch {}
     });
@@ -475,12 +525,16 @@ export default function CascadeApp() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Global Ctrl/Cmd-K.
+  // Global Ctrl/Cmd-K, and Ctrl/Cmd-\ for the side panel.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((open) => !open);
+      } else if (e.key === "\\") {
+        e.preventDefault();
+        setDockOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -638,7 +692,8 @@ export default function CascadeApp() {
 
   const handleTaskSubmit = useCallback(
     async (input: string): Promise<string | null> => {
-      setView("incidents");
+      setView("work");
+      setWorkTab("inbox");
       // No tab switch: the run itself now lives in the floating island, which
       // is visible from wherever you are. Yanking the view around would move
       // the page out from under someone mid-click.
@@ -767,8 +822,8 @@ export default function CascadeApp() {
    */
   const startTour = useCallback(async () => {
     setTutorialOpen(false);
-    setView("incidents");
-    setIncidentTab("inbox");
+    setView("work");
+    setWorkTab("inbox");
     setTourPreparing(true);
     goToStep(0);
     try {
@@ -959,7 +1014,8 @@ export default function CascadeApp() {
   };
 
   const handleCopilotAsk = async (question: string) => {
-    setView("copilot");
+    setDockTab("copilot");
+    setDockOpen(true);
     setCopilotLoading(true);
     try {
       const res = await fetch(`${API_BASE}/copilot`, {
@@ -1121,16 +1177,53 @@ export default function CascadeApp() {
         hint: "test the agent on data it has never seen",
         group: "Actions",
         run: () => {
-          setView("incidents");
-          setIncidentTab("author");
+          setView("work");
+          setWorkTab("author");
         },
+      },
+      {
+        id: "act:newrule",
+        label: "Write a new policy rule",
+        hint: "a rule of your own that the agent must obey",
+        group: "Make it yours",
+        run: () => {
+          setView("policy");
+          setComposerOpen(true);
+        },
+      },
+      {
+        id: "act:import",
+        label: "Import a runbook you already have",
+        hint: "paste one in and ground it in policy",
+        group: "Make it yours",
+        run: () => {
+          setView("procedures");
+          setImportOpen(true);
+        },
+      },
+      {
+        id: "act:connect",
+        label: "Connect Slack, or give an agent a key",
+        hint: "outbound and inbound, in one place",
+        group: "Make it yours",
+        run: () => setView("connections"),
+      },
+      {
+        id: "act:dock",
+        label: "Toggle the side panel",
+        hint: "Copilot and approvals · Ctrl \\",
+        group: "Actions",
+        run: () => setDockOpen((open) => !open),
       },
       {
         id: "act:why",
         label: "Explain the last run",
         hint: "which gate decided it, and on what evidence",
         group: "Actions",
-        run: () => setView("history"),
+        run: () => {
+          setView("work");
+          setWorkTab("history");
+        },
       },
       {
         id: "act:docs",
@@ -1161,6 +1254,24 @@ export default function CascadeApp() {
       : undefined;
 
   const activeView = VIEWS.find((v) => v.id === view)!;
+
+  /**
+   * How far through "make it yours" the viewer has got.
+   *
+   * Every field is derived from live data rather than from a flag set when a
+   * button was clicked, so it survives a reload, a demo reset and a different
+   * browser — and it can never tick a box for something that was started and
+   * abandoned.
+   */
+  const progress: Progress = {
+    wroteRule: setup.myRules > 0,
+    importedProcedure: playbooks.some(
+      (p) => p.origin === "imported" || p.origin === "authored"
+    ),
+    connectedApp: setup.connections > 0,
+    createdKey: setup.keys > 0,
+  };
+  const allDone = Object.values(progress).every(Boolean);
 
   /**
    * Which incidents the inbox may show.
@@ -1196,9 +1307,11 @@ export default function CascadeApp() {
       <ActivityBar
         active={view}
         onSelect={setView}
-        badges={{ approvals: approvals.length, intelligence: insights.length }}
+        badges={{ system: insights.length }}
+        dockBadge={approvals.length}
         onReset={handleResetDemo}
         onCommandPalette={() => setPaletteOpen(true)}
+        onToggleDock={() => setDockOpen((open) => !open)}
       />
 
       <div className={styles.main}>
@@ -1220,7 +1333,7 @@ export default function CascadeApp() {
         <div className={styles.workspace}>
           <div className={styles.viewport}>
             <div className={styles.view}>
-              {view === "incidents" && (
+              {view === "work" && (
                 <div className={styles.split}>
                   <div className={styles.pane}>
                     <div className={styles.tabs} role="tablist">
@@ -1228,24 +1341,25 @@ export default function CascadeApp() {
                         [
                           ["inbox", "Inbox", "open incidents waiting to be fixed"],
                           ["author", "Author", "create an incident the system has never seen"],
-                        ] as [IncidentTab, string, string][]
+                          ["history", "History", "past runs, and why each went the way it did"],
+                        ] as [WorkTab, string, string][]
                       ).map(([id, label, hint]) => (
                         <button
                           key={id}
                           role="tab"
-                          aria-selected={incidentTab === id}
+                          aria-selected={workTab === id}
                           title={hint}
                           className={`${styles.tab} ${
-                            incidentTab === id ? styles.tabActive : ""
+                            workTab === id ? styles.tabActive : ""
                           }`}
-                          onClick={() => setIncidentTab(id)}
+                          onClick={() => setWorkTab(id)}
                         >
                           {label}
                         </button>
                       ))}
                     </div>
 
-                    {incidentTab === "inbox" && (
+                    {workTab === "inbox" && (
                       <div className={styles.tabPanel}>
                         <IncidentInbox
                           apiBase={API_BASE}
@@ -1258,7 +1372,7 @@ export default function CascadeApp() {
                       </div>
                     )}
 
-                    {incidentTab === "author" && (
+                    {workTab === "author" && (
                       <div className={styles.tabPanel}>
                         <IncidentComposer
                           apiBase={API_BASE}
@@ -1266,8 +1380,42 @@ export default function CascadeApp() {
                         />
                       </div>
                     )}
+
+                    {workTab === "history" && (
+                      <div className={styles.tabPanel}>
+                        <RunHistory
+                          apiBase={API_BASE}
+                          refreshKey={refreshKey}
+                          selectedId={lastTaskId}
+                          locked={locked}
+                          onSelect={(id) => void openRun(id)}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className={`${styles.pane} ${styles.paneDivider}`}>
+                    {/* The second act, once the walkthrough has made its point.
+                        Hidden during the tour so there is never a second thing
+                        competing for the click the tour is asking for. */}
+                    {tourStep === null && !checklistOff && !allDone && (
+                      <div className={styles.checklist}>
+                        <MakeItYours
+                          progress={progress}
+                          onDismiss={() => setChecklistOff(true)}
+                          onGo={(id) => {
+                            if (id === "wroteRule") {
+                              setView("policy");
+                              setComposerOpen(true);
+                            } else if (id === "importedProcedure") {
+                              setView("procedures");
+                              setImportOpen(true);
+                            } else {
+                              setView("connections");
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
                     <RunbookLibrary
                       playbooks={playbooks}
                       compiling={compiling}
@@ -1279,26 +1427,22 @@ export default function CascadeApp() {
                 </div>
               )}
 
-              {view === "history" && (
+              {view === "procedures" && (
                 <div className={styles.full}>
-                  <RunHistory
-                    apiBase={API_BASE}
-                    refreshKey={refreshKey}
-                    selectedId={lastTaskId}
-                    locked={locked}
-                    onSelect={(id) => void openRun(id)}
-                  />
-                </div>
-              )}
-
-              {view === "architecture" && (
-                <div className={styles.full}>
-                  <ArchitecturePanel apiBase={API_BASE} refreshKey={refreshKey} />
-                </div>
-              )}
-
-              {view === "runbooks" && (
-                <div className={styles.full}>
+                  <div className={styles.paneHead}>
+                    <span className={styles.paneHint}>
+                      Runbooks the agent learned, and runbooks you brought. Both
+                      are governed the same way.
+                    </span>
+                    <span className={styles.headerSpacer} />
+                    <button
+                      className={styles.headerAction}
+                      onClick={() => setImportOpen(true)}
+                      data-tour="import-procedure"
+                    >
+                      Import a runbook
+                    </button>
+                  </div>
                   <RunbookLibrary
                     playbooks={playbooks}
                     onRelearn={handleRelearn}
@@ -1309,6 +1453,20 @@ export default function CascadeApp() {
 
               {view === "policy" && (
                 <div className={styles.full}>
+                  <div className={styles.paneHead}>
+                    <span className={styles.paneHint}>
+                      Every rule here gates the agent. Changing one costs four
+                      writes, whatever depends on it.
+                    </span>
+                    <span className={styles.headerSpacer} />
+                    <button
+                      className={styles.headerAction}
+                      onClick={() => setComposerOpen(true)}
+                      data-tour="new-rule"
+                    >
+                      New rule
+                    </button>
+                  </div>
                   <PolicyPanel
                     rules={rules}
                     onSimulateImpact={handleSimulateImpact}
@@ -1320,43 +1478,80 @@ export default function CascadeApp() {
                 </div>
               )}
 
-              {view === "copilot" && (
+              {view === "connections" && (
                 <div className={styles.full}>
-                  <OpsCopilot
-                    answer={copilotAnswer}
-                    isLoading={copilotLoading}
-                    onAsk={handleCopilotAsk}
+                  <ConnectionsPanel
+                    apiBase={API_BASE}
+                    privileged={PRIVILEGED}
+                    refreshKey={refreshKey}
+                    onToast={setToast}
                   />
                 </div>
               )}
 
-              {view === "intelligence" && (
+              {view === "system" && (
                 <div className={styles.full}>
-                  <IntelligencePanel apiBase={API_BASE} refreshKey={refreshKey} />
-                </div>
-              )}
-
-              {view === "approvals" && (
-                <div className={styles.full}>
-                  <RightRail
-                    approvals={approvals}
-                    insights={insights}
-                    embedded
-                    onClose={() => setView("incidents")}
-                    onApprove={(id) => void resolveApproval(id, "approved")}
-                    onReject={(id) => void resolveApproval(id, "rejected")}
-                    onReviewPolicy={(key, params) => {
-                      // Carry the insight's suggested parameters into the Policy
-                      // Panel so acting on a recommendation is one click.
-                      setHighlightRule(key);
-                      setPrefillParams(params);
-                      setView("policy");
-                    }}
-                  />
+                  <div className={styles.tabs} role="tablist">
+                    {(
+                      [
+                        ["architecture", "Architecture"],
+                        ["intelligence", "Intelligence"],
+                      ] as [SystemTab, string][]
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        role="tab"
+                        aria-selected={systemTab === id}
+                        className={`${styles.tab} ${
+                          systemTab === id ? styles.tabActive : ""
+                        }`}
+                        onClick={() => setSystemTab(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {systemTab === "architecture" ? (
+                    <ArchitecturePanel apiBase={API_BASE} refreshKey={refreshKey} />
+                  ) : (
+                    <IntelligencePanel apiBase={API_BASE} refreshKey={refreshKey} />
+                  )}
                 </div>
               )}
             </div>
           </div>
+
+          <RightDock
+            open={dockOpen}
+            tab={dockTab}
+            approvalCount={approvals.length}
+            onTab={setDockTab}
+            onClose={() => setDockOpen(false)}
+          >
+            {dockTab === "copilot" ? (
+              <OpsCopilot
+                answer={copilotAnswer}
+                isLoading={copilotLoading}
+                onAsk={handleCopilotAsk}
+              />
+            ) : (
+              <RightRail
+                approvals={approvals}
+                insights={insights}
+                embedded
+                onClose={() => setDockOpen(false)}
+                onApprove={(id) => void resolveApproval(id, "approved")}
+                onReject={(id) => void resolveApproval(id, "rejected")}
+                onReviewPolicy={(key, params) => {
+                  // Carry the insight's suggested parameters into the Policy
+                  // Panel so acting on a recommendation is one click.
+                  setHighlightRule(key);
+                  setPrefillParams(params);
+                  setView("policy");
+                }}
+              />
+            )}
+          </RightDock>
         </div>
 
         <StatusBar
@@ -1369,7 +1564,10 @@ export default function CascadeApp() {
           awaitingApproval={approvals.length}
           hitRate={hitRate}
           onOpenPalette={() => setPaletteOpen(true)}
-          onOpenIntelligence={() => setView("intelligence")}
+          onOpenIntelligence={() => {
+            setView("system");
+            setSystemTab("intelligence");
+          }}
         />
       </div>
 
@@ -1422,6 +1620,26 @@ export default function CascadeApp() {
         <Tutorial
           onStartTour={() => void startTour()}
           onClose={() => setTutorialOpen(false)}
+        />
+      )}
+
+      {composerOpen && (
+        <RuleComposer
+          apiBase={API_BASE}
+          privileged={PRIVILEGED}
+          onClose={() => setComposerOpen(false)}
+          onCreated={refreshAll}
+          onToast={setToast}
+        />
+      )}
+
+      {importOpen && (
+        <ImportProcedure
+          apiBase={API_BASE}
+          privileged={PRIVILEGED}
+          onClose={() => setImportOpen(false)}
+          onImported={refreshAll}
+          onToast={setToast}
         />
       )}
 

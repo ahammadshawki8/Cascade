@@ -3,7 +3,7 @@
 
 **Project:** CockroachDB × AWS Hackathon
 **Submission deadline:** August 16, 2026
-**Last updated:** August 5, 2026
+**Last updated:** August 15, 2026
 
 **🟢 STATUS — code complete, running on real models (Groq + HuggingFace),
 blocked only on AWS credentials**
@@ -16,7 +16,7 @@ blocked only on AWS credentials**
 | Tier 3 (6 features) | ✅ shipped · 2 deliberately deferred |
 | UI | ✅ rebuilt as a desktop application shell |
 | Docs site | ✅ 16 pages, product-usage focused · 16 rendered Mermaid diagrams · every code block highlighted with a copy button |
-| **`verify_integration.py`** | **80 passed · 0 failed · 1 skipped** — re-verified against the deployed stack on **Amazon Bedrock** |
+| **`verify_integration.py`** | **103 passed · 0 failed · 1 skipped** — re-verified against the deployed stack on **Amazon Bedrock** |
 | Frontend | builds clean, TypeScript passes |
 | Lint | 6 cosmetic findings, all in contract-frozen files |
 | Deployment | scripts written & syntax-checked, **not yet executed** |
@@ -50,7 +50,12 @@ Not "written". Verified, with the evidence named.
 | Area | State |
 |---|---|
 | Engine end to end | ✅ learn → reuse → unlearn → **refuse** all run against real CockroachDB |
-| `verify_integration.py` | ✅ **80/80**, against the deployed stack on Bedrock |
+| **Policy is data** | ✅ migration 006. `check_remediation_eligibility` iterates whatever rules exist; the three hardcoded comparisons are now three seeded predicates. Proven faithful by the pre-existing suite passing unchanged |
+| **Bring your own runbooks** | ✅ `POST /api/procedures/parse` then `/procedures`. Model-proposed citations, human-confirmed, governed identically to compiled ones |
+| **Memory API + MCP** | ✅ `POST /api/memory/check` with scoped, hashed, revocable keys. Zero-dependency MCP server at `backend/mcp/`, served from `GET /api/mcp/server.mjs` |
+| **Connectors** | ✅ Slack, Discord, webhook. Local idempotency ledger suppresses replays; dry-run default, 10s timeout, breaker at 3 failures |
+| **Reset is scoped** | ✅ restores the sample, preserves user rules, imported procedures, connections and keys, and re-pins provenance to head |
+| `verify_integration.py` | ✅ **103/103**, against the deployed stack on Bedrock |
 | Tier 1, 2, 3 features | ✅ 15 shipped, 2 deliberately skipped (see *Deliberately not built*) |
 | Frontend | ✅ desktop shell, command palette, builds clean, TypeScript passes |
 | Docs site | ✅ 16 pages at `/docs`, 16 Mermaid diagrams, copy buttons |
@@ -766,6 +771,57 @@ reading four commits of diff.
    planner was running while Groq was serving.
 10. **README rewritten** against the actual code, and **`AWS_SETUP.md`** written
     for the handover.
+
+**August 15, 2026 (Ashfaq + Claude)**
+
+11. **From demo to product.** The app could show the idea but nobody could use
+    it: rules could be edited and never created, runbooks could only come from
+    the compiler, and nothing outside the process could call in. Four changes
+    fixed that, in dependency order.
+
+    - **Policy became data** (migration 006). `check_remediation_eligibility`
+      named three rule keys in Python, so a rule a user invented was stored,
+      versioned, cascaded and correctly reported stale while being enforced by
+      *nothing*. A rule now carries a `predicate` and an `enforcement` mode
+      (advisory / shadow / enforcing), and one evaluator applies whatever exists.
+      The three hardcoded comparisons became three seeded rows, which is how the
+      change is proved faithful: the whole pre-existing suite passes unchanged.
+    - **Procedures can be imported.** Paste a runbook, get model-proposed
+      citations with the sentence each came from, confirm them, and it is
+      governed exactly like a compiled one. Advisory rules mean staleness
+      detection works with no predicate authoring at all, which is the
+      zero-friction on-ramp.
+    - **Other agents can call in.** `POST /api/memory/check` answers "is what I
+      remember still valid" with no planner, no execution and no coupling.
+      Scoped, hashed, revocable keys; a zero-dependency MCP server served from
+      the API itself so a judge with no clone can still connect an editor.
+    - **Connectors reach real systems.** Slack, Discord and bare webhooks, with
+      the idempotency ledger doing the work an `Idempotency-Key` header cannot
+      be trusted to do.
+
+12. **The demo and the product share one database, and the reset is scoped.**
+    No workspace switcher: that would imply an isolation guarantee this does not
+    have. Restore-sample puts the seeded world back, preserves user rules,
+    imported procedures, connections and keys, and re-pins surviving provenance
+    to head. Sample objects carry a chip; yours carry none.
+
+13. **Interface: eight destinations to five.** Work, Procedures, Policy,
+    Connections, System, with Copilot and Approvals moved into a resizable right
+    dock on `Ctrl-\`. Each of the four new capabilities landed in an existing
+    destination rather than adding a tab. A **Make it yours** checklist gives
+    the walkthrough a second act, ticked off from live data.
+
+14. **Suite 80 → 103.** Predicate truth tables, authoring validation, a rule
+    nobody hardcoded gating the engine, advisory and shadow semantics, import
+    refusing an ungrounded procedure, imported procedures never winning
+    retrieval, key scoping and revocation, and connector replay suppression.
+
+15. **Two regressions caught and recorded.** Adding `enforcement` to the
+    `get_rules` tool output moved the compiler's preconditions and silently
+    killed reuse for tier-3 incidents; reverted, and written up as deviation 15.
+    The connector titled a card "Cascade remediated INC-1001" above a message
+    saying remediation was blocked, because it inferred the outcome from the
+    word "remediation" in the prose; it now reads the action log.
 
 ---
 

@@ -34,6 +34,13 @@ export interface Playbook {
   failure_count: number;
   supersedes?: string | null;
   spec: PlaybookSpec;
+  /**
+   * How this runbook came to exist. `compiled` is the agent learning one;
+   * `imported` and `authored` are procedures a person brought. Shown as a chip
+   * because "did the machine write this or did I" is the first thing anyone
+   * looking at a mixed library wants to know.
+   */
+  origin?: string;
 }
 
 interface RunbookLibraryProps {
@@ -152,6 +159,14 @@ export function RunbookLibrary({
                 <div className={styles.nameBlock}>
                   <span className={styles.name}>{pb.name}</span>
                   <span className={styles.version}>v{pb.version}</span>
+                  {/* Only the ones a person brought are marked. Labelling the
+                      compiled majority too would turn a useful distinction into
+                      visual noise on every row. */}
+                  {(pb.origin === "imported" || pb.origin === "authored") && (
+                    <span className={styles.origin}>
+                      {pb.origin === "imported" ? "imported" : "authored"}
+                    </span>
+                  )}
                 </div>
                 
                 <div className={styles.stats}>

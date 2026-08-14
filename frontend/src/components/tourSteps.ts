@@ -74,7 +74,7 @@ export const TOUR: TourStep[] = [
     mechanism:
       "This is the expensive path. Every step costs a call to the planner, which is exactly what the rest of the system exists to avoid paying twice.",
     target: '[data-tour="incident-INC-1001"]',
-    view: "incidents",
+    view: "work",
     reveal: ["INC-1001"],
     advanceOn: "run:started",
     action: "Click Fix it",
@@ -102,7 +102,7 @@ export const TOUR: TourStep[] = [
     mechanism:
       "Each of those citations is a row in <code>playbook_deps</code>, pinning this runbook to <code>rule_key</code> at a specific <code>rule_version</code>.",
     target: '[data-tour="runbook-card"]',
-    view: "runbooks",
+    view: "procedures",
     reveal: [],
     nextLabel: "Now reuse it",
   },
@@ -115,7 +115,7 @@ export const TOUR: TourStep[] = [
     mechanism:
       "Vector search finds the runbook by meaning, not by keyword. Then the freshness gate checks every rule it cited is still at head before a single step runs.",
     target: '[data-tour="incident-INC-1002"]',
-    view: "incidents",
+    view: "work",
     reveal: ["INC-1002"],
     advanceOn: "run:started",
     action: "Click Fix it",
@@ -170,7 +170,7 @@ export const TOUR: TourStep[] = [
     mechanism:
       "Staleness is a <b>JOIN</b>, not a column: the runbook says it was built on v1, the rules table says head is v2, and <code>1 != 2</code> is computed fresh every time anyone asks. A stored flag can drift. This cannot.",
     target: '[data-tour="runbook-card"]',
-    view: "runbooks",
+    view: "procedures",
     reveal: [],
     nextLabel: "Watch it refuse itself",
   },
@@ -183,7 +183,7 @@ export const TOUR: TourStep[] = [
     mechanism:
       "Being similar is not enough. The runbook has to still be true, and the provenance join is what decides that. Acting on superseded policy confidently is worse than having no memory at all.",
     target: '[data-tour="incident-INC-1009"]',
-    view: "incidents",
+    view: "work",
     reveal: ["INC-1009"],
     advanceOn: "run:started",
     action: "Click Fix it",
@@ -235,7 +235,7 @@ export const TOUR: TourStep[] = [
     mechanism:
       "It has to actually perform the work, because the new provenance comes from the rule versions the run really consulted. You cannot type citations in by hand.",
     target: '[data-tour="relearn"]',
-    view: "runbooks",
+    view: "procedures",
     reveal: [],
     advanceOn: "relearn:done",
     action: "Click Re-learn",
@@ -249,7 +249,7 @@ export const TOUR: TourStep[] = [
       "Learn, reuse, invalidate, re-derive. The agent is the ordinary part — plenty of things can call a tool.\n\nThe Architecture view shows the part that is not ordinary: the provenance edges, the cascade that stays four writes, and the vector index the retrieval actually used.",
     mechanism:
       "Every number on that screen is read live from the cluster you have just been driving.",
-    target: '[data-tour="nav-architecture"]',
+    target: '[data-tour="nav-system"]',
     reveal: [],
     nextLabel: "Finish, and bring back the full world",
   },

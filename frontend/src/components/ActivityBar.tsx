@@ -1,32 +1,41 @@
 "use client";
 
-import { useState } from "react";
 import styles from "./ActivityBar.module.css";
 import { Logo } from "./Logo";
 import {
   Terminal,
   BookOpen,
   Shield,
-  Sparkles,
-  Brain,
-  ShieldCheck,
+  Plug,
+  Network,
   RotateCcw,
   Command,
   BookMarked,
-  MoreHorizontal,
-  History,
-  Network,
+  PanelRight,
 } from "lucide-react";
 
-export type ViewId =
-  | "incidents"
-  | "history"
-  | "runbooks"
-  | "policy"
-  | "architecture"
-  | "copilot"
-  | "intelligence"
-  | "approvals";
+/**
+ * Five destinations, one per noun.
+ *
+ * There used to be eight, which was a tour of features rather than a product:
+ * Incidents, History, Runbooks, Policy, Architecture, Copilot, Intelligence and
+ * Approvals, with three of them hidden behind a "More" menu that nobody opens.
+ * Adding importing, rule authoring and connections to that would have made it
+ * eleven.
+ *
+ * Cascade has four things in it and one place they run:
+ *
+ *   Work         incidents, runs, history
+ *   Procedures   the runbook library, however a runbook got here
+ *   Policy       the rules, and what changing one costs
+ *   Connections  outbound to Slack, inbound from other agents
+ *   System       the machinery, read live
+ *
+ * Copilot and Approvals are not destinations at all. You consult a copilot
+ * *while* looking at something, and navigating away from what prompted the
+ * question was always the wrong shape; they live in the right dock now.
+ */
+export type ViewId = "work" | "procedures" | "policy" | "connections" | "system";
 
 interface Item {
   id: ViewId;
@@ -36,72 +45,42 @@ interface Item {
 }
 
 export const VIEWS: Item[] = [
-  { id: "incidents", label: "Incidents", hint: "Run and watch tasks", icon: Terminal },
-  { id: "history", label: "History", hint: "Past runs and why", icon: History },
-  { id: "runbooks", label: "Runbooks", hint: "Learned procedures", icon: BookOpen },
-  { id: "policy", label: "Policy", hint: "Rules and impact", icon: Shield },
+  { id: "work", label: "Work", hint: "Run incidents and review past runs", icon: Terminal },
   {
-    id: "architecture",
-    label: "Architecture",
-    hint: "How it holds together",
-    icon: Network,
+    id: "procedures",
+    label: "Procedures",
+    hint: "Runbooks, learned or imported",
+    icon: BookOpen,
   },
-  { id: "copilot", label: "Copilot", hint: "Ask the database", icon: Sparkles },
-  { id: "intelligence", label: "Intelligence", hint: "Savings, graph, memory", icon: Brain },
-  { id: "approvals", label: "Approvals", hint: "Actions awaiting a human", icon: ShieldCheck },
-];
-
-/**
- * These five carry the story: run one, look at what happened, see what it
- * learned, change the rules, and read how any of that is possible.
- *
- * The three left behind assume you already understand the project, so they
- * stay under "More" — and Approvals promotes itself the moment something is
- * genuinely waiting, because then it is the most important thing on screen.
- */
-const PRIMARY: ViewId[] = [
-  "incidents",
-  "history",
-  "runbooks",
-  "policy",
-  "architecture",
+  { id: "policy", label: "Policy", hint: "Rules, and what changing one costs", icon: Shield },
+  {
+    id: "connections",
+    label: "Connections",
+    hint: "Slack, and agents that call in",
+    icon: Plug,
+  },
+  { id: "system", label: "System", hint: "The machinery, read live", icon: Network },
 ];
 
 interface Props {
   active: ViewId;
   onSelect: (id: ViewId) => void;
   badges?: Partial<Record<ViewId, number>>;
+  dockBadge?: number;
   onReset: () => void;
   onCommandPalette: () => void;
+  onToggleDock: () => void;
 }
 
-/**
- * VS Code-style activity bar: a narrow icon rail that switches the main view.
- *
- * Icon-only with hover labels rather than a persistent sidebar — the panels
- * below want the horizontal space, and six destinations is few enough to learn
- * by position. Badges surface counts that need attention without opening the
- * view.
- */
 export function ActivityBar({
   active,
   onSelect,
   badges = {},
+  dockBadge = 0,
   onReset,
   onCommandPalette,
+  onToggleDock,
 }: Props) {
-  const [moreOpen, setMoreOpen] = useState(false);
-
-  // A view stays on the rail while it is the active one, so selecting from
-  // "More" never makes the thing you are looking at disappear from the nav.
-  // Approvals joins them whenever something is genuinely waiting.
-  const promoted = new Set<ViewId>(PRIMARY);
-  promoted.add(active);
-  if ((badges.approvals ?? 0) > 0) promoted.add("approvals");
-
-  const visible = VIEWS.filter((v) => promoted.has(v.id));
-  const secondary = VIEWS.filter((v) => !promoted.has(v.id));
-
   return (
     <nav className={styles.bar} aria-label="Primary">
       <div className={styles.brand} title="Cascade">
@@ -109,7 +88,7 @@ export function ActivityBar({
       </div>
 
       <div className={styles.group}>
-        {visible.map((item) => {
+        {VIEWS.map((item) => {
           const Icon = item.icon;
           const count = badges[item.id] ?? 0;
           const isActive = active === item.id;
@@ -124,7 +103,9 @@ export function ActivityBar({
               aria-label={item.label}
             >
               <Icon size={20} strokeWidth={1.75} />
-              {count > 0 && <span className={styles.badge}>{count > 99 ? "99+" : count}</span>}
+              {count > 0 && (
+                <span className={styles.badge}>{count > 99 ? "99+" : count}</span>
+              )}
               <span className={styles.tooltip} role="tooltip">
                 <strong>{item.label}</strong>
                 <em>{item.hint}</em>
@@ -132,51 +113,25 @@ export function ActivityBar({
             </button>
           );
         })}
-
-        {/* The secondary views, one keypress away rather than one glance. */}
-        <button
-          type="button"
-          className={`${styles.item} ${moreOpen ? styles.itemActive : ""}`}
-          onClick={() => setMoreOpen((v) => !v)}
-          aria-label="More views"
-          aria-expanded={moreOpen}
-        >
-          <MoreHorizontal size={20} strokeWidth={1.75} />
-          <span className={styles.tooltip} role="tooltip">
-            <strong>More</strong>
-            <em>Copilot, intelligence, approvals</em>
-          </span>
-        </button>
-
-        {moreOpen && (
-          <div className={styles.more}>
-            {secondary.map((item) => {
-              const Icon = item.icon;
-              const count = badges[item.id] ?? 0;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={styles.moreItem}
-                  onClick={() => {
-                    onSelect(item.id);
-                    setMoreOpen(false);
-                  }}
-                >
-                  <Icon size={15} strokeWidth={1.75} />
-                  <span className={styles.moreLabel}>{item.label}</span>
-                  <span className={styles.moreHint}>{item.hint}</span>
-                  {count > 0 && <span className={styles.moreBadge}>{count}</span>}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       <div className={styles.spacer} />
 
       <div className={styles.group}>
+        <button
+          type="button"
+          className={styles.item}
+          onClick={onToggleDock}
+          data-tour="nav-dock"
+          aria-label="Copilot and approvals"
+        >
+          <PanelRight size={20} strokeWidth={1.75} />
+          {dockBadge > 0 && <span className={styles.badge}>{dockBadge}</span>}
+          <span className={styles.tooltip} role="tooltip">
+            <strong>Side panel</strong>
+            <em>Copilot and approvals · Ctrl \</em>
+          </span>
+        </button>
         <button
           type="button"
           className={styles.item}
@@ -200,12 +155,12 @@ export function ActivityBar({
           type="button"
           className={styles.item}
           onClick={onReset}
-          aria-label="Reset demo"
+          aria-label="Restore sample world"
         >
           <RotateCcw size={20} strokeWidth={1.75} />
           <span className={styles.tooltip} role="tooltip">
-            <strong>Reset demo</strong>
-            <em>Restore the clean v1 world</em>
+            <strong>Restore sample</strong>
+            <em>Keeps everything you made</em>
           </span>
         </button>
       </div>

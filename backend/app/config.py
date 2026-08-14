@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     internal_sse_secret: str = "dev-internal-secret"
     webhook_secret: str = "dev-webhook-secret"
 
+    # --- Public identity ---------------------------------------------------
+    # Where this API is reachable from outside. Used only to write the
+    # copy-paste connection snippets an external agent needs, which have to name
+    # a URL the agent's machine can actually resolve — localhost is right on a
+    # laptop and useless in a deployment, and only the deployment knows which.
+    public_api_url: str = ""
+
     # --- Observability (T3.3) ---------------------------------------------
     # OTLP endpoint for traces. Empty disables tracing entirely, so the app
     # never blocks on a collector that isn't there.

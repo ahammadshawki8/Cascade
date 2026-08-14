@@ -20,6 +20,10 @@ RUN pip install --upgrade pip && pip install .
 COPY app/ ./app/
 COPY worker/ ./worker/
 COPY migrations/ ./migrations/
+# The MCP server is served to agents from GET /api/mcp/server.mjs, so a judge
+# with no clone can still connect their editor. Optional: the endpoint reports
+# a clear 404 rather than failing if the build context did not include it.
+COPY mcp/ ./mcp/
 
 # /api/admin/reset reads 002_seed.sql off disk, so migrations must ship in the
 # image — without them the demo reset 500s in production but works locally.

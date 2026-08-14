@@ -7,14 +7,23 @@ BEGIN;
 -- SEED RULES (v1 baseline)
 -- ============================================================================
 
-INSERT INTO rules (rule_key, version, domain, body, params, changed_by) VALUES
+-- `predicate` is how the rule decides, and `enforcement` is whether its verdict
+-- binds. Both were hardcoded in tools.py until migration 006; keeping them here
+-- matters because a demo reset replays this file, and a restored world whose
+-- rules gate nothing would look identical right up until the agent ignored one.
+INSERT INTO rules (rule_key, version, domain, body, params, changed_by, predicate, enforcement) VALUES
 (
     'incident.auto_remediate_tier',
     1,
     'incident',
     'Automated remediation is allowed only for services at tier {min_tier} or higher. Tier 1 (production-critical) services require manual approval.',
     '{"min_tier": 2}',
-    'system'
+    'system',
+    '{
+        "require": {"field": "service_tier", "op": "gte", "param": "min_tier"},
+        "deny": "service tier {service_tier} is below the automation floor of tier {min_tier} - manual approval required"
+    }',
+    'enforcing'
 ),
 (
     'incident.rollback_window',
@@ -22,7 +31,14 @@ INSERT INTO rules (rule_key, version, domain, body, params, changed_by) VALUES
     'incident',
     'Rollback is allowed only if the deploy happened within the last {hours} hours. Beyond this window, rollback is considered too risky.',
     '{"hours": 24}',
-    'system'
+    'system',
+    '{
+        "when": {"field": "action", "op": "eq", "value": "rollback"},
+        "require": {"field": "deploy_age_hours", "op": "lte", "param": "hours"},
+        "deny": "deploy was {deploy_age_hours}h ago, outside the {hours}h rollback window",
+        "unknown": "no deploy timestamp - rollback window unverifiable"
+    }',
+    'enforcing'
 ),
 (
     'incident.notify',
@@ -30,7 +46,12 @@ INSERT INTO rules (rule_key, version, domain, body, params, changed_by) VALUES
     'incident',
     'On-call must be notified after any automated remediation action is taken.',
     '{}',
-    'system'
+    'system',
+    -- An obligation, not a precondition: there is nothing here to gate on, and
+    -- pretending otherwise would block every action until a notification that
+    -- has not happened yet.
+    NULL,
+    'advisory'
 ),
 (
     'incident.single_action',
@@ -38,7 +59,12 @@ INSERT INTO rules (rule_key, version, domain, body, params, changed_by) VALUES
     'incident',
     'Maximum one automated remediation action is allowed per incident. Multiple automated actions require escalation.',
     '{}',
-    'system'
+    'system',
+    '{
+        "require": {"field": "prior_actions", "op": "eq", "value": 0},
+        "deny": "incident already has an automated remediation - single-action limit reached"
+    }',
+    'enforcing'
 );
 
 -- ============================================================================

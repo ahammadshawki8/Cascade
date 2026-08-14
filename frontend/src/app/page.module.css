@@ -285,3 +285,26 @@
   white-space: pre-wrap;
   font-family: var(--font-ibm-plex-mono), monospace;
 }
+
+/* The "make it yours" card sits above the library in the Work view. */
+.checklist {
+  padding: 12px 14px 0;
+  flex-shrink: 0;
+}
+
+/* A panel-level action bar: one hint, one primary action. */
+.paneHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.paneHint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  max-width: 70ch;
+}
