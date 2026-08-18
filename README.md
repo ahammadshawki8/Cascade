@@ -18,7 +18,16 @@ agent is one consumer of it.
 
 CockroachDB x AWS Hackathon submission
 Ashfaq (Track A, shell) and Shawki (Track B, core engine)
-Last updated: August 15, 2026
+Last updated: August 19, 2026
+
+**Live demo:** https://main.d1fzvx73990zqu.amplifyapp.com
+**Documentation, in the app:** https://main.d1fzvx73990zqu.amplifyapp.com/docs
+**API:** https://d3t9yaye62k6ve.cloudfront.net
+
+No login and no credentials. Everything a reviewer needs to do is a write, so
+the demo is deliberately open. Press `Ctrl-K` and run **Start the guided
+walkthrough** for the whole loop in about six minutes, or **Reset demo world**
+at any time to put the sample data back.
 
 | | |
 |---|---|
@@ -368,7 +377,7 @@ Browser
   |  https
 Next.js interface and server-side proxy
   |
-FastAPI on ECS Fargate            9 routers, in-process interrupt bus, SSE
+FastAPI on ECS Fargate            13 routers, in-process interrupt bus, SSE
   |
   +--> CockroachDB                all durable state, vector index, MVCC history
   |
@@ -591,7 +600,7 @@ not reachable through the API without a race.
 
 | Area | What is asserted |
 |---|---|
-| Schema and seed | 14 tables, 4 head rules, 6 services, 12 incidents |
+| Schema and seed | 13 core tables, 4 head rules, 6 services, 12 incidents |
 | Vector index | `EXPLAIN` selects `pb_embed_idx` |
 | Learn | Cold run succeeds, episode written, outbox queued, runbook at 0.30, and **every provenance edge resolves to a real rule version** |
 | Reuse | Guided mode entered, speedup reported, confidence rises by 0.15 |
@@ -683,7 +692,7 @@ backend/
       autonomy.py, insights.py, postmortem.py, savings.py
       triage.py, analysis.py, negative_memory.py
       fanout.py, generalize.py
-    routers/               9 routers
+    routers/               13 routers
   worker/                  6 job kinds
   migrations/              001 schema, 002 seed, 003 extensions, 004 production,
                            005 step detail
@@ -730,7 +739,7 @@ Getting started, Using Cascade, Understanding it, and Reference.
 **In the repository:**
 
 - `CLAUDE.md`, integrated project memory, current status, and the roadmap
-- `DEVIATIONS.md`, 12 documented deviations with rationale and impact
+- `DEVIATIONS.md`, 16 documented deviations with rationale and impact
 - `docs/query-plans.md`, vector index `EXPLAIN` verification, including the
   full-scan plan a single stray predicate produced before it was fixed
 - `docs/skills-review.md`, CockroachDB Agent Skills findings
@@ -755,7 +764,11 @@ receive real notifications with replay suppression proven against the ledger.
 Other agents can call the memory layer over HTTP or MCP with scoped, revocable
 keys.
 
-**Remaining.** Demo video, Devpost submission.
+**Deployed and reachable.** The full stack is live on AWS: ECS Fargate behind
+CloudFront for the API, Lambda and SQS for the worker, Amplify for the console,
+against a CockroachDB Cloud cluster running `SURVIVE ZONE FAILURE`. Bedrock is
+serving both the planner and the embeddings, which `/api/metrics` reports as it
+happens.
 
 Two features were deliberately not built. Multi-tenancy needs an org column on
 every table and scoping in every query, and half-done multi-tenancy is a
@@ -770,6 +783,6 @@ precisely so a live call can never hang the demo.
 Ashfaq, Track A: FastAPI routers, frontend, infrastructure.
 Shawki, Track B: core memory engine, AI logic, worker jobs.
 
-Repository: https://github.com/ahammadshawki8/Cascade
-Issues: https://github.com/ahammadshawki8/Cascade/issues
+Repository: https://github.com/ashfaqstu/Cascade
+Issues: https://github.com/ashfaqstu/Cascade/issues
 License: MIT
