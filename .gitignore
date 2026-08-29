@@ -22,6 +22,12 @@ build/
 node_modules/
 .next/
 out/
+# ...except the evaluation's results, which are evidence rather than build
+# output. Every claim in IMPROVEMENT_CHANGELOG.md and the Evidence view is
+# read from these files, so a reader who cannot see them has to take the
+# numbers on trust.
+!backend/eval/out/
+!backend/eval/out/**
 .turbo/
 npm-debug.log*
 

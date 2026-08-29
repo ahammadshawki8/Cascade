@@ -16,10 +16,6 @@ already have, write policy rules of your own, and let your own agent ask
 whether what it remembers is still valid. Those three are the product; the
 agent is one consumer of it.
 
-CockroachDB x AWS Hackathon submission
-Ashfaq (Track A, shell) and Shawki (Track B, core engine)
-Last updated: August 19, 2026
-
 **Live demo:** https://main.d1fzvx73990zqu.amplifyapp.com
 **Documentation, in the app:** https://main.d1fzvx73990zqu.amplifyapp.com/docs
 **API:** https://d3t9yaye62k6ve.cloudfront.net
@@ -38,6 +34,64 @@ at any time to put the sample data back.
 | Unlearn transaction | **4 writes**, fixed, whatever depends on the rule |
 | Survivability | `SURVIVE ZONE FAILURE`, 3 voting replicas across separate AWS availability zones |
 | Deployment | **live** on ECS Fargate, Lambda, SQS, S3, Secrets Manager, CloudFront and Amplify |
+
+---
+
+## Who this is for, and what it costs them today
+
+**The user is the person on call at 3am**, and the team that writes the runbooks
+they reach for.
+
+**The bottleneck** is not finding a procedure. It is knowing whether the one you
+found is still true. A runbook is written against the policy of the day it was
+written: roll back within 24 hours, never auto-fix a tier-1 service, one
+automated action per incident. Those numbers change. The runbook does not. It
+still matches the incident, it still executes cleanly, and it now does the wrong
+thing quickly and with confidence.
+
+Nothing about a stale procedure looks stale. That is what makes it expensive.
+The failure is silent at the moment it matters, and it is discovered afterwards,
+in the incident review for the incident it caused.
+
+**Why solving it is worth something.** Teams respond to this today by not
+automating: procedures stay advisory, a human reads them and decides, and the
+value of having written them down is mostly lost. The alternative is automating
+and accepting that some fraction of runs will confidently apply superseded
+policy. Cascade is an attempt at a third option, where a procedure carries the
+versions of the rules it was derived from and refuses itself when any of them
+moves.
+
+### What was here before this hackathon, and what was added
+
+Required disclosure, kept specific.
+
+**Already existed.** The engine and its three phases (learn, reuse, unlearn),
+the provenance join, the O(1) cascade transaction, the compiled-predicate reuse
+path, the desktop shell, the docs site, the deployment scripts, and the
+integration suite.
+
+**Added during this hackathon.**
+
+| | |
+|---|---|
+| [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) | the iteration history, rebuilt from git rather than memory, with the reverted experiment |
+| [`REPRODUCTION.md`](REPRODUCTION.md) | clean-environment setup, and the exact commands for solution, baseline and evaluation |
+| `backend/eval/` | **the baselines and the evaluation harness**, which did not exist in any form |
+| **Evidence** view | the measured comparison, rendered in the product |
+| `backend/eval/export_trajectories.py` | trajectories exported from what was recorded, not written up |
+
+Several defects were found and fixed along the way, and they are listed with
+their commits in the changelog. Two are worth naming here because they affected
+anyone trying to run this: the documented migration order failed on the second
+file, and `GET /api/rules/{key}` reported every rule as advisory with no
+predicate whatever it was actually configured to do.
+
+### What the evaluation shows, and what it does not
+
+Numbers and full per-case results are in
+[`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) and in the **Evidence**
+view of the running app. Read that section before quoting anything from this
+README, because it also records where the result was weaker than expected.
 
 ---
 

@@ -19,7 +19,7 @@ tuned after seeing them.
 
 | Stage | What was tried, and why | Evidence | Decision / learning |
 |---|---|---|---|
-| **Baseline** | A single-prompt agent given the incident, the runbook text and the policy prose, asked to decide | **pending** — `run_eval.py --arm baseline` | Establishes the starting point |
+| **Baseline** | A single-prompt agent given the incident and the policy prose, asked to decide | **86.4%** policy-correct, 0 unsafe, 7,118 tokens | Establishes the starting point, and it is a strong one |
 | **Iteration 1** | Retrieve a past procedure instead of re-planning it | Two query plans committed, `docs/query-plans.md` | Kept. Assert the plan, not just the answer |
 | **Iteration 2** | Make staleness a join instead of a stored flag | `freshness.py`, structured result naming every stale rule | Kept. A computed fact cannot be forgotten |
 | **Iteration 3** | Invalidate in O(1) rather than per dependent | `impact.writes == 4` at 50,000 runbooks | Kept. Deriving beats writing |
@@ -28,7 +28,9 @@ tuned after seeing them.
 | **Iteration 6** | Refuse to compile an escalation into a runbook | Same run was being stored as both procedure and anti-pattern (`94ceac6`) | Kept. Policy working is not knowledge gained |
 | **Iteration 7** | Take the model off the reuse path entirely | 4.03x -> **11.45x** on Bedrock, n=3/side (`e7b5c25`) | Kept. Largest single contribution |
 | **Removed** | Expose `enforcement` in the `get_rules` tool output | Tier-3 reuse silently died; 3 assertions failed (`DEVIATIONS.md` #15) | **Reverted.** That output is a model-shaped surface |
-| **Final** | Everything kept, measured against the baseline on the same cases | **pending** — `run_eval.py --arm both` | Identifies the main contribution |
+| **Iteration 8** | Build the baselines and the harness, and score all three arms | Three methodology defects found before any number was believed | Kept. The harness is the deliverable, not the number |
+| **Iteration 9** | Read the run outcome from the tools instead of the planner | Cascade reported a remediation it never performed (`0071bdc`) | Kept. Found by the harness scoring its own system |
+| **Final** | Everything kept, measured against both baselines on identical cases | **95.5%** vs **86.4%**, at **5x** the tokens | Cascade is more accurate and more expensive. It is not safer |
 
 ---
 
@@ -64,7 +66,80 @@ still agree, and should degrade sharply in phase two, where they do not. Cascade
 should hold across both. If the baseline holds in phase two as well, the premise
 of this project is wrong and this document will say so.
 
-> **pending** — numbers land here from `backend/eval/run_eval.py`.
+### What actually happened
+
+Run 2026-08-29 against the deployed stack on Bedrock. 22 scored decisions per
+arm. Full per-case results in `backend/eval/out/`, and in the **Evidence** view
+of the running app.
+
+| Metric | Direct prompt | Cached runbook | Cascade |
+|---|---|---|---|
+| Policy-correct decisions | 86.4% | 86.4% | **95.5%** |
+| Unsafe actions | 0 | 0 | 1 |
+| Median latency | 2,530 ms | 2,515 ms | 4,877 ms |
+| Planner tokens | 7,118 | 9,821 | 36,641 |
+
+**The prediction was wrong, and it is worth saying so plainly.** The stated
+expectation was that the baselines would hold up in phase 1 and degrade sharply
+in phase 2, because they carry a procedure that predates the policy change.
+They did not degrade that way, and neither baseline took a single unsafe action
+across 22 decisions.
+
+The reason is visible in their own words. Asked about `INC-1009` after the
+window moved, the cached-runbook arm answered:
+
+> "The deploy occurred 5.01 hours ago, which exceeds the current 4-hour rollback
+> window defined in `incident.rollback_window` **(v2)**"
+
+It was handed the current policy on every call, as fairness required, and Claude
+Sonnet 4.6 is entirely capable of noticing that the live rule and the
+remembered procedure disagree, and siding with the rule. A strong model with the
+policy in context does not need provenance to get this right.
+
+So the honest headline is not safety. It is that **Cascade is more accurate
+(95.5% against 86.4%) and roughly five times more expensive in tokens.**
+
+### What did separate them
+
+**The cached-runbook arm got worse after the policy change, on incidents the
+change did not touch.** It went 90.9% to 81.8%, and its two new errors were
+`INC-1007` and `INC-1008` — resource-exhaustion incidents, where
+`rollback_window` does not apply at all. Tightening one rule made it
+over-cautious about unrelated work.
+
+That is a real failure mode of holding policy in a prompt: a change is absorbed
+as a mood rather than as a scope. Cascade cannot do this, because a predicate
+either applies to a situation or it does not, and `rollback_window` carries
+`{"when": {"field": "action", "op": "eq", "value": "rollback"}}`. A restart is
+untouched by a rollback rule, structurally, on every run.
+
+**Cascade was the only arm that got `INC-1011` right, in both phases.** Both
+baselines escalated a tier-3 error spike that policy permits.
+
+**Reuse costs nothing when it happens.** Four of eleven phase-1 cases ran guided:
+zero planner tokens, no model call on that path. In phase 2 only one did,
+because the rule change correctly invalidated the runbook and everything else
+re-planned. That is the cost of the safety property, and it is the honest reason
+Cascade's token total is the highest here.
+
+### The unsafe action was ours, and it was a reporting defect
+
+Cascade's single unsafe result was `INC-1012` in phase 2 — an incident that is
+already `resolved` and 48 hours old, recorded as `remediated`.
+
+Nothing was applied. The trajectory for that run is one step long, and it is
+`get_incident`. The planner read the state, correctly concluded there was
+nothing to do, and finished with `outcome: success` — and the executor filed
+that as a remediation. `apply_remediation` refuses a non-open incident on its
+own and was never reached.
+
+The world was safe. The record was wrong, which is its own problem: metrics, the
+savings ledger and the episode all counted a remediation that never happened,
+and a runbook compiled from that trajectory would be a procedure for doing
+nothing that sits in the library looking like a procedure for fixing something.
+
+Fixed in `0071bdc` — see Iteration 9. The number above is left as measured
+rather than re-run, because the defect is the more useful artifact.
 
 ---
 
@@ -295,6 +370,71 @@ to add it back will recur.
 
 ---
 
+## Iteration 8 — Build the baselines, and find out the harness was lying
+
+*`backend/eval/`, commits `066b8ca` and `d1780bd`.*
+
+**Tried.** Nothing in this repository had ever been compared to an alternative.
+The number quoted everywhere was Cascade's explore path against its own guided
+path, which measures caching and calls it safety: explore is part of the
+solution, its tools enforce policy independently of the model, and both sides of
+that comparison were already safe.
+
+**Evidence.** Three defects in the harness, each of which would have produced a
+clean-looking report measuring nothing. All three were found before any number
+was believed, by scoring the cases read-only and by smoke-running three
+incidents before spending on the full pass.
+
+- **The facts were empty.** `build_incident_facts` derives `deploy_age_hours`
+  from a `deploy_timestamp`; the incident API does that subtraction in SQL and
+  returns only the result. Feeding the API response in yielded UNKNOWN, so
+  `rollback_window` reported "no deploy timestamp" for every bad deploy that
+  plainly had one. Every bad deploy would have escalated under both policies,
+  the phases would have agreed, and the measured improvement would have been
+  zero for a reason with nothing to do with the system under test.
+- **The rule moved before the runbook existed.** Phase 2 tightened the window
+  and then learned, so the runbook was derived from the new rule and arrived
+  perfectly fresh. Phase 2 was measuring "can these systems apply a stricter
+  rule they were just handed", which all of them can.
+- **The harness raced the compiler.** `POST /api/tasks` returning `succeeded`
+  says the incident was remediated, not that a procedure was derived from it.
+  Compilation is asynchronous and takes about 25 seconds, so the cascade
+  invalidated nothing and the runbook then compiled against the new version
+  anyway.
+
+**Kept.** A green run reporting no difference is worse than a crash, because
+nothing in it tells you to go and look.
+
+---
+
+## Iteration 9 — Read the outcome from the tools, not from the planner
+
+*Commit `0071bdc`. Found by Iteration 8.*
+
+**Tried.** Nothing, initially. This was found by pointing the finished harness
+at Cascade and reading the one case it got wrong.
+
+**Evidence.** The explore path filed a run as `remediated` whenever the
+planner's final answer carried `outcome: success`, so the planner could report a
+remediation nobody performed. On `INC-1012` it did exactly that, and the
+trajectory proves it: one step, `get_incident`, and no eligibility check or
+remediation tool anywhere in the run.
+
+**Kept.** A run now counts as remediated only if a remediation tool returned
+success. An idempotent replay still counts, because the action exists and this
+run simply did not have to perform it twice. The guided path already read its
+verdict from `check_remediation_eligibility` rather than from the model, so it
+was left alone.
+
+**Learning.** This is the same defect the connector had, written up months
+earlier in this file: it titled a card "Cascade remediated INC-1001" above a
+message saying remediation was blocked, because it inferred the outcome from
+prose. That was fixed by reading the action log. The identical mistake was
+sitting one layer down in the executor the whole time, and no amount of staring
+at the code found it. Scoring the system against a ground truth did.
+
+---
+
 ## Main failure mode
 
 **Provenance that cannot be trusted.**
@@ -318,6 +458,44 @@ of the space. It does not catch a condition that is merely too weak.
 ---
 
 ## Hot take
+
+**A system that is never scored will pass its own review forever.**
+
+This project had 109 integration assertions, a live deployment, a documentation
+site and a claim of 11.45x, and not one of those things was capable of noticing
+that the executor recorded remediations that never happened. The assertions
+passed because they asked "did the run succeed", which is the same question the
+defect answered wrongly. The deployment served the bug faithfully. The docs
+described the intended behaviour, accurately, and the intended behaviour was
+never what shipped.
+
+What found it was building something that could **disagree** — an oracle derived
+from the policy data rather than from the code, and a baseline that would answer
+the same questions independently. Within one run of scoring itself against that,
+the system produced a case where its own answer and the policy's answer differed,
+and the difference was a real defect that had been sitting in the hot path.
+
+The uncomfortable half is that the same exercise deleted the headline. The
+evaluation was built expecting to show baselines executing stale procedures
+while Cascade refused them. It showed the opposite: Claude Sonnet 4.6, handed
+the current policy, spots the conflict on its own and cites the new rule version
+by name. The measured differences are accuracy (95.5% against 86.4%), scope
+discipline when a rule changes, and a five-fold cost *increase*, which is not
+the story anyone sets out to tell.
+
+Both halves have the same cause. Confidence in an agent system tends to be
+built out of things that cannot contradict it: tests written from the same
+mental model as the code, demos driven along the happy path, metrics that count
+what the system says it did. None of those is an adversary. An oracle and a
+baseline are, and they are cheap — this one is about 400 lines and cost a couple
+of dollars to run.
+
+**If you build one thing after reading this, build the thing that can tell you
+you are wrong, and run it before you are attached to the answer.**
+
+---
+
+### The earlier hot take, which still holds
 
 **Stubs hide the failures that matter.**
 
