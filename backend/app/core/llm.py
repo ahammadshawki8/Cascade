@@ -136,11 +136,35 @@ def mark_degraded(reason: str) -> None:
 
 
 def note_provider(name: str) -> None:
-    """Record which provider served the most recent call."""
-    global _active_provider
+    """Record which provider served the most recent call.
+
+    A success on the primary provider *clears* the degraded flag, because
+    "degraded" is meant to describe the present rather than the worst thing that
+    ever happened.
+
+    It used to latch. `mark_degraded` sets the reason and nothing but a test
+    helper cleared it, so one throttled call during a busy run left the status
+    reading `degraded` with "no chat provider available" for the life of the
+    process, while Bedrock went on serving every request perfectly. The banner
+    then rendered "served by bedrock rather than Bedrock", which is the sentence
+    that gave it away.
+
+    A status that only ever gets worse is not a status, it is a high-water mark,
+    and an operator who sees it stuck amber on a healthy system learns to ignore
+    the colour entirely.
+    """
+    global _active_provider, _degraded_reason
     _active_provider = name
     if name != "bedrock":
         mark_degraded(f"served by {name} rather than Bedrock")
+    elif _degraded_reason is not None:
+        # Chat and embeddings fall back independently and share this one flag,
+        # so clearing here can mask an embedding still on a fallback path.
+        # `/api/admin/smoke` reports the two separately and stays the
+        # authoritative answer; this flag is the summary, and a summary that is
+        # permanently wrong is worse than one that is occasionally optimistic.
+        log.info("LLM recovered: Bedrock is serving again")
+        _degraded_reason = None
 
 
 def llm_status() -> str:

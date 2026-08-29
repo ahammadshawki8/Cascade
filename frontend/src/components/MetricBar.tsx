@@ -57,6 +57,21 @@ export function MetricBar({ data }: MetricBarProps) {
   const onLocalPlanner =
     !data?.llm_provider || data.llm_provider === "local";
 
+  /**
+   * Degraded, but Bedrock is the thing serving.
+   *
+   * The status flag used to latch: one throttled call left it reading degraded
+   * for the life of the process while Bedrock served every request, and this
+   * banner rendered "served by bedrock rather than Bedrock". The flag is fixed
+   * to clear on recovery, but the deployed API may predate that, and a stale
+   * reason is exactly the case where a confident banner does the most damage.
+   *
+   * So the sentence is derived from the provider actually named, never from the
+   * flag alone. If Bedrock is serving, say that, and treat the flag as history.
+   */
+  const degradedButOnBedrock =
+    data?.llm === "degraded" && data.llm_provider === "bedrock";
+
   return (
     <div style={{ position: "relative" }}>
       <div className={styles.metricBar}>
@@ -150,7 +165,16 @@ export function MetricBar({ data }: MetricBarProps) {
           operator actually needs to get right. */}
       {data?.llm === "degraded" && (
         <div className={styles.degradedStrip}>
-          {onLocalPlanner ? (
+          {degradedButOnBedrock ? (
+            <>
+              <strong>Recovered:</strong>
+              <span>
+                Bedrock is serving. A provider call failed earlier in this
+                process and the status has not been re-checked since. Timings
+                are real and comparable.
+              </span>
+            </>
+          ) : onLocalPlanner ? (
             <>
               <strong>Local planner:</strong>
               <span>
