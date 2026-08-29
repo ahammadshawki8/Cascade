@@ -286,6 +286,160 @@ export const TOUR: TourStep[] = [
    * that suspicion the only way it can be answered: by pointing at the four
    * things they can do to their own material in the next few minutes.
    */
+  /* =====================================================================
+   * ACT TWO — every surface, and what it is for.
+   *
+   * Act one is the argument. It is deliberately narrow: one incident at a
+   * time, one thread, nothing on screen that is not part of the story.
+   *
+   * The cost of that narrowness is a reviewer who has watched something
+   * convincing happen and still cannot say what half the interface is. They
+   * have seen the numbers change without being told what the numbers are, and
+   * they have never been shown the four things that turn a demo into a tool
+   * they could run on Monday.
+   *
+   * So act two is a tour of the product rather than of the idea. Every
+   * destination, every number, and the honest answer to "why is this here" for
+   * each one. It is long, and it is skippable at every step.
+   * ===================================================================== */
+
+  {
+    id: "act-two",
+    title: "That was the idea. Now the tool.",
+    body:
+      "You have seen the loop, which is the part worth being convinced by. What you have not seen is most of the interface, or what any of the numbers along the top mean.\n\nThe rest of this walks every screen and answers the same three questions each time: what is this, why is it here, and what would you do with it on your own systems. Leave whenever you like.",
+    mechanism:
+      "Nothing below runs the model or changes your data unless you ask it to.",
+    reveal: [],
+    nextLabel: "Start with the numbers",
+  },
+
+  {
+    id: "the-numbers",
+    title: "The two numbers that are the whole claim",
+    body:
+      "<b>Cold</b> is how long the agent takes when it has to think. <b>Guided</b> is how long it takes when it can reuse something. Watching those two diverge is the entire argument for keeping memory at all.\n\n<b>Hit rate</b> is how often an incident found something to reuse. Low is not bad — it means the agent is still learning. <b>Tasks</b> is a live count by state: queued, running, interrupted, succeeded, failed.",
+    mechanism:
+      "Cold and guided are averaged over successful runs only. An escalation short-circuits before the expensive part, so averaging it in would drag the two modes together and understate the gap.",
+    target: '[data-tour="metrics"]',
+    view: "work",
+    reveal: [],
+    nextLabel: "And the light on the right",
+  },
+
+  {
+    id: "the-provider",
+    title: "Which model is actually serving you",
+    body:
+      "The <b>LLM</b> dot is green when Amazon Bedrock is answering and amber when something else is. That distinction matters more than it looks: the timings above are only comparable if real model calls are being made.\n\nThe bar along the bottom says the same thing permanently — provider, live connection, and which database you are on.",
+    mechanism:
+      "Chat and embeddings fall back independently, so <code>/api/admin/smoke</code> reports them separately. The dot is the summary.",
+    target: '[data-tour="metrics"]',
+    reveal: [],
+    nextLabel: "On to the screens",
+  },
+
+  {
+    id: "tour-work",
+    title: "Work — where things actually run",
+    body:
+      "Three tabs. <b>Inbox</b> is the sample incidents, each carrying its policy verdict so you can see why two similar ones get treated differently. <b>Author</b> is where you describe an incident of your own, in your own words, and watch the same machinery decide it. <b>History</b> is every past run, replayable step by step.\n\nAuthor is the one to try on your own systems. It takes a sentence.",
+    mechanism:
+      "An incident you write is stored in the same table as the sample ones and goes through the identical path. There is no separate demo mode.",
+    target: '[data-tour="nav-work"]',
+    view: "work",
+    reveal: [],
+    nextLabel: "Procedures",
+  },
+
+  {
+    id: "tour-procedures",
+    title: "Procedures — the memory itself",
+    body:
+      "Every runbook the agent has learned, and every one you have brought. The coloured dots on a card are its provenance: one per policy rule it was derived from, cyan while that rule is unchanged and grey once it has moved.\n\n<b>Import a runbook</b> is how your existing material gets in. Paste a wiki page or a Markdown runbook; the model proposes which policy rules it depends on, you confirm them, and from that moment it is governed exactly like one the agent wrote itself.",
+    mechanism:
+      "An imported procedure never wins retrieval over a compiled one. It is advisory until it has earned otherwise.",
+    target: '[data-tour="nav-procedures"]',
+    view: "procedures",
+    reveal: [],
+    nextLabel: "Policy",
+  },
+
+  {
+    id: "tour-policy",
+    title: "Policy — the rules the agent has to obey",
+    body:
+      "Not settings. These are the constraints the agent is bound by, and changing one is what invalidates memory.\n\n<b>New rule</b> lets you write your own: pick a fact, pick a comparison, and it becomes something the engine enforces on every run. That is the part most tools do not have — a policy you author is enforced, versioned and cascaded identically to the ones that shipped.",
+    mechanism:
+      "A rule carries a predicate and an enforcement mode. Advisory rules are prose that still gets cited and still goes stale; enforcing rules decide.",
+    target: '[data-tour="nav-policy"]',
+    view: "policy",
+    reveal: [],
+    nextLabel: "Connections",
+  },
+
+  {
+    id: "tour-connections",
+    title: "Connections — using this from your own agent",
+    body:
+      "The part that makes this a tool rather than an app. Two halves.\n\n<b>Apps Cascade talks to</b>: point it at a Slack or Discord webhook and the next refusal lands in a real channel.\n\n<b>Agents that call Cascade</b>: create a key, and any agent you already run can ask one question over HTTP or MCP — <i>is what I remember still valid?</i> It needs no model and no execution, so it works with any framework you are already using.",
+    mechanism:
+      "Keys are scoped and revocable. A key that only asks about memory cannot start a remediation.",
+    target: '[data-tour="nav-connections"]',
+    view: "connections",
+    reveal: [],
+    nextLabel: "System",
+  },
+
+  {
+    id: "tour-system",
+    title: "System — the machine, and what it saved you",
+    body:
+      "<b>Architecture</b> draws the live provenance graph and the query plan retrieval actually used, read from the cluster rather than from a diagram.\n\n<b>Intelligence</b> answers three questions you would otherwise have to guess at. <b>Savings</b>: what reuse has cost and avoided. <b>Blast radius</b>: what a given rule is holding up, before you touch it. <b>Negative memory</b>: approaches that already failed, so the agent does not pay to rediscover them.",
+    mechanism:
+      "These are read-only views over the same tables. Nothing here is a second copy of anything.",
+    target: '[data-tour="nav-system"]',
+    view: "system",
+    reveal: [],
+    nextLabel: "Evidence",
+  },
+
+  {
+    id: "tour-evidence",
+    title: "Evidence — whether any of this is actually better",
+    body:
+      "The same twelve incidents decided by three systems: a direct prompt, a normal cached-runbook memory, and this one. Same model, same policy, same cases.\n\nIt is worth reading the part where the result went against us. The baselines were expected to execute stale procedures and did not, because a strong model handed the current policy notices the conflict on its own. What separated them is narrower, and it is written down rather than tidied away.",
+    mechanism:
+      "The page renders a committed result file, and prints the command that regenerates it. A number you cannot re-derive is a claim, not evidence.",
+    target: '[data-tour="nav-evidence"]',
+    view: "evidence",
+    reveal: [],
+    nextLabel: "Two more things",
+  },
+
+  {
+    id: "tour-dock",
+    title: "The side panel — asking, and approving",
+    body:
+      "<b>Ctrl-\\</b> opens it, and it holds the two things you consult rather than visit.\n\n<b>Copilot</b> answers questions about this database in English and shows you the SQL it ran, so you can check it. <b>Approvals</b> is where an action waits when policy permits it but the runbook has not yet earned the right to act unsupervised.",
+    mechanism:
+      "Copilot is read-only by construction, and refuses anything that is not a single SELECT.",
+    target: '[data-tour="nav-dock"]',
+    reveal: [],
+    nextLabel: "And the fastest way around",
+  },
+
+  {
+    id: "tour-palette",
+    title: "Ctrl-K does everything",
+    body:
+      "Every destination, every action, and the reset, from one box. Type a few letters of what you want.\n\nIf you only remember one shortcut, this is the one.",
+    mechanism: "",
+    target: '[data-tour="nav-commands"]',
+    reveal: [],
+    nextLabel: "Make it yours",
+  },
+
   {
     id: "handover",
     title: "Everything so far ran on our data",
@@ -296,6 +450,25 @@ export const TOUR: TourStep[] = [
     target: '[data-tour="make-it-yours"]',
     view: "work",
     reveal: [],
-    nextLabel: "Finish, and bring back the full world",
+    nextLabel: "One last thing",
+  },
+
+  /**
+   * The exit.
+   *
+   * A walkthrough that has just shown a reviewer nine screens has also just
+   * demonstrated that the product has nine screens, which is the opposite of
+   * what most people want on a Tuesday. This step exists so the tour can hand
+   * back something smaller than it borrowed.
+   */
+  {
+    id: "work-mode",
+    title: "Now put most of it away",
+    body:
+      "You have seen everything, which is the point of a walkthrough and a bad way to run a tool day to day.\n\n<b>Work mode</b> keeps the four screens you actually operate — incidents, procedures, policy, connections — and hides the ones that exist to explain the system rather than run it. Nothing is deleted, and <b>Ctrl-K</b> brings it all back whenever you want it.",
+    mechanism:
+      "The teaching surfaces are System and Evidence. They are how you understand this, not how you use it.",
+    reveal: [],
+    nextLabel: "Switch to work mode",
   },
 ];

@@ -263,3 +263,35 @@
   color: var(--text-dim);
   background-color: var(--raised);
 }
+
+/* Work mode indicator.
+   Deliberately quiet: it is a statement about what is on screen, not an alert.
+   Clicking it restores every destination. */
+.modeBadge {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.modeBadge:hover {
+  color: var(--accent);
+  background-color: var(--surface-hover);
+}
+
+.modeBadge span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

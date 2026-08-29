@@ -2,7 +2,13 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import styles from "./page.module.css";
-import { ActivityBar, ViewId, VIEWS } from "../components/ActivityBar";
+import {
+  ActivityBar,
+  ViewId,
+  VIEWS,
+  ShellMode,
+  viewsFor,
+} from "../components/ActivityBar";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { StatusBar } from "../components/StatusBar";
 import { CommandPalette, Command } from "../components/CommandPalette";
@@ -89,6 +95,15 @@ type SystemTab = "architecture" | "intelligence";
 
 export default function CascadeApp() {
   const [view, setView] = useState<ViewId>("work");
+  /**
+   * Which surfaces are on screen.
+   *
+   * Starts `guided`, always, including for a returning visitor: a reviewer who
+   * lands on a four-icon rail has no way to discover that two more exist, and
+   * the walkthrough is what earns the right to put them away. Work mode is
+   * something you choose at the end of it, and it is remembered once chosen.
+   */
+  const [shellMode, setShellMode] = useState<ShellMode>("guided");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   /**
@@ -207,16 +222,47 @@ export default function CascadeApp() {
     }
   }, []);
 
+  const MODE_KEY = "cascade_shell_mode";
+
+  // Restore a previously chosen work mode after mount. localStorage is not
+  // available during SSR, and defaulting to guided means a first visit is right.
+  useEffect(() => {
+    if (window.localStorage.getItem(MODE_KEY) === "work") setShellMode("work");
+  }, []);
+
+  const applyMode = useCallback((next: ShellMode) => {
+    setShellMode(next);
+    window.localStorage.setItem(MODE_KEY, next);
+    // Never leave someone looking at a destination that is no longer in the
+    // rail. Switching to work mode while on System would otherwise render a
+    // view with no way back to it and no icon to explain where it went.
+    if (next === "work") {
+      setView((current) =>
+        viewsFor("work").some((v) => v.id === current) ? current : "work"
+      );
+    }
+  }, []);
+
   const cancelTour = useCallback(() => setTourStep(null), []);
 
   const advanceTour = useCallback(() => {
     setTourStep((i) => {
       if (i == null) return null;
-      const next = i + 1 >= TOUR.length ? null : i + 1;
+      // Finishing the last step is the one place work mode is offered, because
+      // it is the only point at which someone has actually seen what they are
+      // agreeing to put away.
+      if (i + 1 >= TOUR.length) {
+        queueMicrotask(() => {
+          applyMode("work");
+          goToStep(null);
+        });
+        return i;
+      }
+      const next = i + 1;
       queueMicrotask(() => goToStep(next));
       return i;
     });
-  }, [goToStep]);
+  }, [goToStep, applyMode]);
 
   /**
    * A step ends when the system finishes its half, never on the click.
@@ -913,6 +959,11 @@ export default function CascadeApp() {
    */
   const startTour = useCallback(async () => {
     setTutorialOpen(false);
+    // The walkthrough visits every destination, including the two work mode
+    // puts away. Starting it from work mode would send the spotlight to a
+    // screen with no icon in the rail, so the tour always restores the full
+    // shell first and offers work mode again at the end.
+    applyMode("guided");
     setView("work");
     setWorkTab("inbox");
     setTourPreparing(true);
@@ -923,7 +974,7 @@ export default function CascadeApp() {
       setTourPreparing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goToStep]);
+  }, [goToStep, applyMode]);
 
   const handleSimulateImpact = async (
     ruleKey: string,
@@ -1129,13 +1180,42 @@ export default function CascadeApp() {
   // ---------------------------------------------------------------- commands
 
   const commands = useMemo<Command[]>(() => {
+    // Every destination stays reachable from here, in either mode. Work mode is
+    // about what is in front of you, not about taking anything away, and a
+    // palette that hid what the rail hides would make it a real removal.
     const go: Command[] = VIEWS.map((v) => ({
       id: `go:${v.id}`,
       label: `Go to ${v.label}`,
-      hint: v.hint,
+      hint:
+        shellMode === "work" && !viewsFor("work").some((w) => w.id === v.id)
+          ? `${v.hint} · hidden in work mode`
+          : v.hint,
       group: "Navigate",
-      run: () => setView(v.id),
+      run: () => {
+        // Visiting a hidden destination brings the rail back with it, rather
+        // than dropping someone on a screen with no icon to return to.
+        if (!viewsFor(shellMode).some((w) => w.id === v.id)) applyMode("guided");
+        setView(v.id);
+      },
     }));
+
+    const modeCommand: Command[] = [
+      shellMode === "work"
+        ? {
+            id: "mode:guided",
+            label: "Show every screen",
+            hint: "Bring back System and Evidence",
+            group: "Actions",
+            run: () => applyMode("guided"),
+          }
+        : {
+            id: "mode:work",
+            label: "Switch to work mode",
+            hint: "Keep the four screens you operate, put the rest away",
+            group: "Actions",
+            run: () => applyMode("work"),
+          },
+    ];
 
     const runs: Command[] = [
       ["INC-1001", "bad deploy · tier 2 · in window"],
@@ -1327,9 +1407,9 @@ export default function CascadeApp() {
       },
     ];
 
-    return [...go, ...runs, ...asks, ...actions];
+    return [...go, ...runs, ...asks, ...actions, ...modeCommand];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleTaskSubmit, refreshAll, fetchInsights, startTour]);
+  }, [handleTaskSubmit, refreshAll, fetchInsights, startTour, shellMode, applyMode]);
 
   // ------------------------------------------------------------------ render
 
@@ -1403,6 +1483,8 @@ export default function CascadeApp() {
     <div className={`${styles.shell} appShell`}>
       <ActivityBar
         active={view}
+        mode={shellMode}
+        onExitWorkMode={() => applyMode("guided")}
         onSelect={setView}
         badges={{ system: insights.length }}
         dockBadge={approvals.length}

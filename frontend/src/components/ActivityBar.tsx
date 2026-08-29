@@ -16,6 +16,7 @@ import {
   PanelRight,
   ChevronsLeft,
   ChevronsRight,
+  Sparkles,
 } from "lucide-react";
 
 const EXPANDED_KEY = "cascade_rail_expanded";
@@ -57,27 +58,60 @@ export type ViewId =
   | "system"
   | "evidence";
 
+/**
+ * Two modes, because a walkthrough and a working day want opposite things.
+ *
+ * `guided` shows everything: a reviewer needs to see the whole product, and
+ * hiding half of it to look tidy would only make them wonder what was hidden.
+ *
+ * `work` keeps the four screens you operate and puts away the two that exist to
+ * explain the system rather than run it. Nothing is deleted and the command
+ * palette still reaches everything; this is about what is in front of you by
+ * default.
+ *
+ * The distinction is not "advanced features". It is teaching surface against
+ * working surface, which is a real difference and the reason the split is
+ * defensible rather than arbitrary.
+ */
+export type ShellMode = "guided" | "work";
+
 interface Item {
   id: ViewId;
   label: string;
   hint: string;
   icon: typeof Terminal;
+  /** Present in work mode. False for the surfaces that teach rather than do. */
+  working?: boolean;
 }
 
 export const VIEWS: Item[] = [
-  { id: "work", label: "Work", hint: "Run incidents and review past runs", icon: Terminal },
+  {
+    id: "work",
+    label: "Work",
+    hint: "Run incidents and review past runs",
+    icon: Terminal,
+    working: true,
+  },
   {
     id: "procedures",
     label: "Procedures",
     hint: "Runbooks, learned or imported",
     icon: BookOpen,
+    working: true,
   },
-  { id: "policy", label: "Policy", hint: "Rules, and what changing one costs", icon: Shield },
+  {
+    id: "policy",
+    label: "Policy",
+    hint: "Rules, and what changing one costs",
+    icon: Shield,
+    working: true,
+  },
   {
     id: "connections",
     label: "Connections",
     hint: "Slack, and agents that call in",
     icon: Plug,
+    working: true,
   },
   { id: "system", label: "System", hint: "The machinery, read live", icon: Network },
   {
@@ -88,8 +122,15 @@ export const VIEWS: Item[] = [
   },
 ];
 
+/** The destinations visible in a mode. Work mode drops the teaching surfaces. */
+export function viewsFor(mode: ShellMode): Item[] {
+  return mode === "work" ? VIEWS.filter((v) => v.working) : VIEWS;
+}
+
 interface Props {
   active: ViewId;
+  mode: ShellMode;
+  onExitWorkMode: () => void;
   onSelect: (id: ViewId) => void;
   badges?: Partial<Record<ViewId, number>>;
   dockBadge?: number;
@@ -100,6 +141,8 @@ interface Props {
 
 export function ActivityBar({
   active,
+  mode,
+  onExitWorkMode,
   onSelect,
   badges = {},
   dockBadge = 0,
@@ -141,7 +184,7 @@ export function ActivityBar({
       </div>
 
       <div className={styles.group}>
-        {VIEWS.map((item) => {
+        {viewsFor(mode).map((item) => {
           const Icon = item.icon;
           const count = badges[item.id] ?? 0;
           const isActive = active === item.id;
@@ -172,6 +215,24 @@ export function ActivityBar({
       </div>
 
       <div className={styles.spacer} />
+
+      {/* Work mode has to announce itself.
+          Hiding two destinations without saying so is indistinguishable from
+          them never having existed, which would leave anyone who saw them
+          during the walkthrough wondering where they went and whether they
+          broke something. */}
+      {mode === "work" && (
+        <button
+          type="button"
+          className={styles.modeBadge}
+          onClick={onExitWorkMode}
+          aria-label="Show every screen again"
+          title="Show every screen again"
+        >
+          <Sparkles size={14} />
+          {expanded && <span>Work mode · show all</span>}
+        </button>
+      )}
 
       <button
         type="button"
