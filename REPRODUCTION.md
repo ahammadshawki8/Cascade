@@ -148,6 +148,30 @@ and talks to the engine directly rather than over HTTP, because the interrupt
 case needs a task already carrying `interrupt_flag` before execution starts,
 which is not reachable through the API without a race.
 
+### 4b. Prove it against a deployment
+
+`verify_integration.py` talks to the engine in process, which is right for
+correctness and wrong for "is the thing I deployed actually working". For that:
+
+```bash
+python -m eval.verify_features --api http://127.0.0.1:8000 --admin-token dev-admin-token
+```
+
+It walks the product's claims in the order a person would, over HTTP: learn a
+procedure, watch it get reused with no model call, change the rule it was built
+on, confirm the cascade is four writes, and confirm the procedure is refused
+afterwards even though it still matches. Then the memory API, the vector index
+plan, and every endpoint the interface reads.
+
+**Expect:** `28 passed, 1 failed` against the currently deployed API. The one
+failure is real and known — `GET /api/rules/{key}` reports every rule as
+advisory with no predicate, because the query never selected those columns. It
+is fixed in this repository and the deployed API predates the fix.
+
+Three real incidents through a real model, one committed policy change, and a
+reset at each end. A couple of minutes and a few cents. It restores the sample
+world when it finishes, so it is safe to point at the demo.
+
 ### 5. See the thing the project exists for
 
 In the browser, in this order:
