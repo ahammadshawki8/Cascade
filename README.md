@@ -1,19 +1,43 @@
 # CASCADE
 
-**An on-call SRE agent that learns how it fixed something, reuses that
-knowledge, and stops trusting it the moment your policy changes.**
+**Agent memory that knows when it has expired.**
+
+Every procedure this system learns is pinned to the exact version of every
+policy rule it was derived from. Change one rule and all of them stop being
+trusted, in a transaction of four writes, whether one procedure depends on
+that rule or a hundred thousand. Nothing is marked stale, because staleness
+is a join, not a column.
+
+An agent produces the procedures. That part is ordinary, and it is the last
+thing in this README for a reason.
+
+You can also use it without adopting the agent at all. Import the runbooks you
+already have, write policy rules of your own, and let your own agent ask
+whether what it remembers is still valid. Those three are the product; the
+agent is one consumer of it.
 
 CockroachDB x AWS Hackathon submission
 Ashfaq (Track A, shell) and Shawki (Track B, core engine)
-Last updated: August 5, 2026
+Last updated: August 19, 2026
+
+**Live demo:** https://main.d1fzvx73990zqu.amplifyapp.com
+**Documentation, in the app:** https://main.d1fzvx73990zqu.amplifyapp.com/docs
+**API:** https://d3t9yaye62k6ve.cloudfront.net
+
+No login and no credentials. Everything a reviewer needs to do is a write, so
+the demo is deliberately open. Press `Ctrl-K` and run **Start the guided
+walkthrough** for the whole loop in about six minutes, or **Reset demo world**
+at any time to put the sample data back.
 
 | | |
 |---|---|
-| Integration suite | **81 passed, 0 failed**, against a live CockroachDB |
-| Providers | Verified end to end on **Groq** (planner) and **HuggingFace** (embeddings) |
-| Measured speedup | **3.31x** (cold 6,561 ms, guided 1,981 ms) |
-| Cascade transaction | **16 to 26 ms**, independent of how much has been learned |
-| Deployment | Scripts written and syntax checked, not yet executed |
+| Integration suite | **109 passed, 0 failed, 1 skipped**, against a live CockroachDB Cloud cluster |
+| Serving | **Amazon Bedrock** end to end: Claude Sonnet 4.6 (planner), Claude Haiku 4.5 (fast path), Titan Text Embeddings v2 |
+| Measured speedup | **11.45x** (cold 13,158 ms, guided 1,149 ms), n=3 each, on Bedrock |
+| Planner tokens avoided | **7,469 per reuse**, down to zero |
+| Unlearn transaction | **4 writes**, fixed, whatever depends on the rule |
+| Survivability | `SURVIVE ZONE FAILURE`, 3 voting replicas across separate AWS availability zones |
+| Deployment | **live** on ECS Fargate, Lambda, SQS, S3, Secrets Manager, CloudFront and Amplify |
 
 ---
 
@@ -38,8 +62,11 @@ run is compiled into a runbook, together with the exact policy rules it
 consulted and the version each one was at.
 
 **Reuse.** A similar incident arrives. Vector search finds the runbook, the
-provenance check confirms every pinned rule is still current, and the stored
-steps execute directly with no planner in the loop.
+provenance check confirms every pinned rule is still current, its compiled
+preconditions are evaluated, and the stored steps execute directly. No model is
+called at any point on this path: retrieval is a vector index, freshness is a
+join, and the precondition check is a predicate evaluation. The same incident
+therefore gets the same answer every time.
 
 **Unlearn.** You change a rule. Every runbook that depended on it is stale the
 instant the transaction commits, in-flight tasks are interrupted before their
@@ -80,29 +107,30 @@ docker run -d --name cascade-crdb \
   cockroachdb/cockroach:latest start-single-node --insecure
 ```
 
-### 2. Apply the four migrations, in order
+### 2. Apply the six migrations, in order
 
 `001` creates the schema and the vector index, `002` seeds policy and twelve
 demo incidents, `003` adds negative memory, `004` adds retention and merge
-lineage.
+lineage, `005` retains the step detail behind each run, and `006` turns policy
+into data and adds connections, agent keys and the connector ledger.
 
 ```bash
 cd backend
 
-for f in 001_schema 002_seed 003_extensions 004_production; do
+for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail \n         006_platform; do
   docker cp migrations/$f*.sql cascade-crdb:/tmp/$f.sql
 done
 
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
 
-for f in 001 002 003 004; do
+for f in 001 002 003 004 005 006; do
   docker exec cascade-crdb ./cockroach sql --insecure \
     --database=cascade --file=//tmp/$f.sql
 done
 ```
 
-Expect 14 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
+Expect 19 tables, 4 rules, 6 services, 12 incidents, and the `pb_embed_idx`
 vector index. `infra/02_migrate.sh` does the same against a remote cluster.
 
 ### 3. Configure
@@ -164,6 +192,122 @@ provider is serving** to see which is which, or call `/api/admin/smoke`.
 
 ---
 
+## Using it on your own material
+
+Everything the walkthrough shows runs on sample data that ships with the
+product. These four take a couple of minutes each and run on yours. The console
+tracks them under **Make it yours** in the Work view, and each one is checked
+off by reading real state rather than by remembering that a button was pressed.
+
+### Write a policy rule of your own
+
+**Policy** then **New rule**. Pick a field, an operator and a value, say what
+the refusal should read, and choose whether it binds:
+
+| Mode | What it does |
+|---|---|
+| Advisory | Cited and versioned. Invalidates procedures when it changes. Blocks nothing. |
+| Shadow | Evaluated and recorded, but does not block. Use it to see what a rule would have refused before letting it refuse anything. |
+| Enforcing | Blocks the action when it fails. |
+
+**Try it against the incidents** runs the candidate rule over the incident set
+and reports exactly which ones it would refuse, using the same evaluator the
+engine uses, so the preview cannot flatter the rule.
+
+Until August 2026 this was impossible, and it would not have meant anything if
+it had been: the eligibility check named three rule keys in Python, so a rule
+you invented was stored, versioned, cascaded and correctly reported stale while
+being enforced by nothing. Policy is now data, and the evaluator applies
+whatever rules exist. The proof that the change was faithful is that the whole
+pre-existing suite passes unchanged against rules that are now rows.
+
+Advisory mode matters more than it looks. Staleness detection never needed a
+predicate, only provenance, so you can paste in fifty policies as advisory in
+an afternoon and get the entire runbook-rot product working the same day.
+
+### Import a runbook you already have
+
+**Procedures** then **Import a runbook**. Paste it in whatever shape it is
+already in. Cascade reads it and proposes which policy rules it depends on,
+each with the sentence it was drawn from, and nothing is written until you
+confirm.
+
+The confirmation is not ceremony. Linking sentences to policy is model output,
+and a wrong citation would not fail loudly, it would quietly make a procedure
+look governed while never going stale. A procedure with no citations is
+refused outright for the same reason.
+
+Imported procedures are governed, not executed. Their steps are prose a human
+performs, so they are searchable and they go stale by exactly the same join as
+a compiled runbook, but retrieval will never hand one to the executor.
+
+### Send the result to Slack
+
+**Connections** then **Connect an app**. Paste a Slack incoming webhook URL
+(Discord and bare webhooks work too, and Discord needs no app and no admin
+approval if your Slack workspace blocks installs). **Send test** delivers a
+real message and reports the status code and latency it got back.
+
+From then on, when the agent notifies on-call the message lands in the channel
+as well as in the demo log. The mock world is layered under it rather than
+replaced, so the seeded demo keeps working with nothing configured.
+
+The safety property is the interesting part. Approving a gated action resumes
+the task by re-running it, which is only safe because every side-effecting step
+is idempotent on `{task_id}:{step_index}`. Remote services are not trusted to
+honour an `Idempotency-Key` header, so `connector_calls` carries a unique
+constraint and a replayed step is suppressed from our own ledger. The
+connections list counts those suppressions, and the run trace shows them.
+
+Connections are `dry_run` until you deliberately make them live, calls time out
+at ten seconds, and three consecutive failures trip a breaker that escalates
+the run rather than blocking it.
+
+### Let your own agent ask
+
+**Connections** then **Create key**. Choose where it will run and you get a
+copy-paste block with the key already in it, plus the one command that
+downloads the connector. It has no dependencies, so downloading it is the whole
+install.
+
+Then, in your own editor:
+
+> is my rollback procedure still valid?
+
+```
+POST /api/memory/check
+{"citations": [{"rule_key": "incident.rollback_window", "rule_version": 1}]}
+
+-> {"valid": false,
+    "summary": "Not valid. incident.rollback_window moved from v1 to v2
+                (hours: 24 -> 4). Re-derive the procedure before acting on it."}
+```
+
+No planner, no execution, no coupling to how the caller works. An agent with a
+completely different toolset can use this, which is why it is the piece worth
+exposing. Change the rule in Cascade, ask again, and the answer changes, with
+the version, the parameter delta and who moved it.
+
+Keys are hashed, scoped (`memory:read`, `memory:write`, `runs:write`) and
+revocable. Starting incidents is off by default: checking memory is read-only
+and starting a run is not.
+
+The console reacts while this happens. The key shows as live with a call count
+and a last-seen time, and **What agents have been asking** lists each check and
+its verdict. That is the evidence for a claim that would otherwise be a
+sentence in a README.
+
+### Restoring the sample world keeps all of it
+
+**Restore sample** puts the seeded rules, services and incidents back and
+clears what the agent learned. It does not touch the rules you wrote, the
+procedures you imported, your connections or your keys, and it re-pins your
+procedures' provenance to whatever policy is now head. Deleting someone's Slack
+connection because they asked to restore sample data would be a bug, not a
+feature.
+
+---
+
 ## Demo flow
 
 ### 1. Learn
@@ -208,7 +352,7 @@ curl -X POST http://127.0.0.1:8000/api/rules/incident.rollback_window \
   -d '{"body": "Rollback allowed only within {hours} hours of deploy.", "params": {"hours": 4}}'
 ```
 
-The cascade commits in 16 to 26 ms as four writes with no fan-out. The runbook
+The cascade commits as exactly four writes with no fan-out. The runbook
 card flips to `suspect` with a red provenance dot, running tasks are
 interrupted before their next side effect, and runbooks above 0.6 confidence
 are queued for relearning as v2 with a `supersedes` link.
@@ -233,7 +377,7 @@ Browser
   |  https
 Next.js interface and server-side proxy
   |
-FastAPI on ECS Fargate            9 routers, in-process interrupt bus, SSE
+FastAPI on ECS Fargate            13 routers, in-process interrupt bus, SSE
   |
   +--> CockroachDB                all durable state, vector index, MVCC history
   |
@@ -261,7 +405,7 @@ insert the new one, one outbox event, one audit entry.
 
 Staleness then *derives* from the version bump. Every dependent runbook is
 stale the instant this commits, and no runbook row was touched to make that
-true. That is why the cascade takes the same 16 to 26 ms whether there are
+true. That is why the transaction is the same four writes whether there are
 three runbooks or three thousand.
 
 ### Retrieval runs in two statements
@@ -326,26 +470,65 @@ the rules. A runbook at 0.99 is quarantined the instant a dependency moves.
 
 ## Performance
 
-Measured August 5, 2026 against local CockroachDB v26.2.5 with **Groq serving
-the planner and HuggingFace serving embeddings**.
+Measured August 14, 2026 on the **deployed** stack: Amazon Bedrock serving both
+the planner and the embeddings, against a CockroachDB Cloud cluster. Three cold
+runs and three reuses, one of each incident kind.
 
-| Metric | Target | Measured |
-|---|---|---|
-| Cascade transaction | under 100 ms | **16 to 26 ms** |
-| Cold run (explore) | not applicable | 6,561 ms over 4 steps |
-| Guided run (reuse) | not applicable | 1,981 ms over 4 steps |
-| Guided versus cold | at least 3x faster | **3.31x** |
-| Tokens avoided per reuse | not applicable | 1,169 |
-| Vector retrieval | under 20 ms | index verified by live `EXPLAIN` |
+| Metric | Measured |
+|---|---|
+| Cold run (explore) | 13,158 ms, 4.7 steps, 7,469 planner tokens |
+| Guided run (reuse) | 1,149 ms, 4.3 steps, **0 planner tokens** |
+| Guided versus cold | **11.45x faster** |
+| Planner tokens avoided per reuse | **7,469**, to zero |
+| Unlearn transaction | **4 writes**, fixed |
+| Vector retrieval | index confirmed by live `EXPLAIN`, in the app at `/architecture` |
 
-Quote the 3.31x with the provider attached. It was measured on Groq, not
-Bedrock, and it will move with model latency.
+Sample size is three per side and the figure moves with model latency, so
+treat 4x as the order of magnitude rather than a constant. The steady number
+is the token one: a reuse calls the planner zero times, and that is structural
+rather than a measurement.
 
-Earlier revisions of this file reported the guided path as *slower*. That was
-real, and it was an artefact of running with no model provider: the explore
-path paid no planning latency to save, while the guided path still ran its
-precondition and parameter checks. `/api/metrics` reports the serving provider
-and reason, so you can always tell which regime a measurement came from.
+### Does it hold at size
+
+`backend/scripts/seed_scale.py` seeds synthetic runbooks against synthetic
+rules, moves one rule, and reports what the transaction wrote against what it
+invalidated. Run against the CockroachDB Cloud cluster:
+
+| runbooks depending on the rule | writes | runbooks left stale | cascade |
+|---|---|---|---|
+| 3,000 | **4** | 3,000 | 1,703 ms |
+| 50,000 | **4** | 50,000 | **1,583 ms** |
+
+Sixteen times the dependent set, and the cascade is *not slower*. The
+difference between the two rows is network noise, because neither transaction
+touched a single runbook row. That is the claim, and it is the reason it is
+worth expressing staleness as a join.
+
+Freshness for one runbook stayed at ~275 ms across both, since it reads that
+runbook's own provenance edges and nothing else.
+
+```bash
+python scripts/seed_scale.py --runbooks 50000 --rules 2000
+```
+
+Everything it creates is prefixed `scale/` and removed afterwards, so it is
+safe to point at the demo cluster.
+
+### On the cascade, and why there is no millisecond target here
+
+Earlier revisions claimed the cascade completes in under 100 ms. That was
+measured against single-node CockroachDB in Docker, and it does not survive
+contact with a multi-node Cloud cluster, where the same transaction takes a
+couple of seconds of consensus and network.
+
+Reporting it that way was measuring the wrong thing. The claim D1 makes is not
+a latency budget, it is that **the write set does not grow with how much has
+been learned**: four writes whether one runbook depends on the rule or a
+hundred thousand. The integration suite now asserts the write count, which is
+the property, instead of a wall clock, which is the network.
+
+`/api/metrics` reports the serving provider and reason, so you can always tell
+which regime a measurement came from.
 
 ---
 
@@ -359,10 +542,25 @@ not a field the caller gets to assert.
 
 **Authentication does not.** No login, no user store, no sessions. Tokens are
 shared secrets, not per-user credentials, and the `name:` prefix that shows up
-in the audit log is self-asserted. Most read endpoints need no credential at
-all. For a judging link that is arguably intended, since a judge is meant to be
-able to change policy. When it is not, gate the whole site at the edge with
-`DEMO_USER` and `DEMO_PASSWORD` on `infra/06_deploy_frontend.sh`.
+in the audit log is self-asserted. 25 of the 35 endpoints need no credential at
+all, including `POST /api/tasks` and `POST /api/copilot`.
+
+**The public demo is deliberately left open**, and this is a decision rather
+than an omission. Everything a reviewer needs to do is a write: run an
+incident, change a rule, re-learn a runbook, reset the world. Putting a
+password in front of that would make the submission unevaluable in order to
+protect a database full of invented incidents. The blast radius is a demo
+world with a reset button on it.
+
+What is protected is the credential, not the data: privileged calls go through
+a server-side proxy so the admin token never reaches the browser, and the
+Copilot executes as a role with no write grants. To close the site anyway, set
+`DEMO_USER` and `DEMO_PASSWORD` for `infra/06_deploy_frontend.sh` and Amplify
+will gate it at the edge.
+
+Real authentication would be Cognito or OIDC in front of CloudFront with
+`Principal` resolved from a verified JWT. `app/auth.py` was written around that
+seam. It is post-submission work, not a weekend of it.
 
 **Credentials stay server-side.** Privileged calls go through a Next.js route
 handler that attaches the token out of the browser's reach, behind an explicit
@@ -391,7 +589,7 @@ at-least-once delivery and a worker dying mid-job are both survivable.
 
 ```bash
 cd backend
-python verify_integration.py          # 81 assertions, resets the world first
+python verify_integration.py          # 109 assertions, resets the world first
 python verify_integration.py --keep   # run against existing state
 ```
 
@@ -402,17 +600,23 @@ not reachable through the API without a race.
 
 | Area | What is asserted |
 |---|---|
-| Schema and seed | 14 tables, 4 head rules, 6 services, 12 incidents |
+| Schema and seed | 13 core tables, 4 head rules, 6 services, 12 incidents |
 | Vector index | `EXPLAIN` selects `pb_embed_idx` |
 | Learn | Cold run succeeds, episode written, outbox queued, runbook at 0.30, and **every provenance edge resolves to a real rule version** |
 | Reuse | Guided mode entered, speedup reported, confidence rises by 0.15 |
 | Policy in guided mode | A refused eligibility verdict blocks the side-effecting steps |
 | Autonomy gate | Parks, applies nothing, resumes on approve, **remediates exactly once despite the replay**, rejects cleanly |
 | Interrupt | Halts, **no side effect applied**, scratchpad persisted, flag cleared |
-| Unlearn | Cascade under 100 ms, old version closed, staleness derived, **stale runbook refused**, status demoted |
+| Unlearn | Cascade is four writes, old version closed, staleness derived, **stale runbook refused**, status demoted |
 | Triage, replay, time travel, graph | Semantics and integrity |
 | Copilot | Answers with visible SQL, rejects 4 injection attempts, allows a normal `created_at` read |
 | RBAC, TTL, generalization | Role ordering, retention scoping, merge lineage |
+| Predicates | A rule applies, refuses and abstains as written; a missing fact is unknown rather than silently false; malformed rules are refused at authoring time |
+| Rule authoring | **A rule nobody hardcoded gates the engine**, is recorded as provenance, and advisory and shadow modes block nothing |
+| Import | A pasted runbook yields name and steps, **one with no citations is refused**, human steps are kept, **an imported procedure never wins retrieval**, and it goes stale by the same join |
+| API keys | Scopes are enforced, the secret is never stored, revocation is immediate |
+| Connectors | Each destination gets its own payload shape, **a replayed step is suppressed rather than sent twice**, and a failing connection is skipped rather than retried forever |
+| Walkthrough | **No step waits only on a success-only event**, the cold run compiles, the runbook carries a checkable predicate, the second incident really reuses, the policy change invalidates it, and the stale runbook is refused on the record |
 | Contract | All 11 signatures unchanged |
 
 Frontend:
@@ -488,10 +692,11 @@ backend/
       autonomy.py, insights.py, postmortem.py, savings.py
       triage.py, analysis.py, negative_memory.py
       fanout.py, generalize.py
-    routers/               9 routers
+    routers/               13 routers
   worker/                  6 job kinds
-  migrations/              001 schema, 002 seed, 003 extensions, 004 production
-  verify_integration.py    81 assertions
+  migrations/              001 schema, 002 seed, 003 extensions, 004 production,
+                           005 step detail
+  verify_integration.py    109 assertions
   run_local.py             Windows selector-loop launcher
 
 frontend/src/
@@ -534,7 +739,7 @@ Getting started, Using Cascade, Understanding it, and Reference.
 **In the repository:**
 
 - `CLAUDE.md`, integrated project memory, current status, and the roadmap
-- `DEVIATIONS.md`, 12 documented deviations with rationale and impact
+- `DEVIATIONS.md`, 16 documented deviations with rationale and impact
 - `docs/query-plans.md`, vector index `EXPLAIN` verification, including the
   full-scan plan a single stray predicate produced before it was fixed
 - `docs/skills-review.md`, CockroachDB Agent Skills findings
@@ -550,12 +755,20 @@ Getting started, Using Cascade, Understanding it, and Reference.
 full learn, reuse, unlearn, refuse sequence runs end to end. Vector index proven
 by live `EXPLAIN`. Tier 1 through 3 features shipped. Interface rebuilt as a
 desktop application shell with a command palette. Documentation site written.
-81 of 81 assertions passing on live providers.
+109 of 109 assertions passing against the deployed stack on Bedrock.
 
-**Blocked on AWS credentials.** Deploying, re-proving the vector index on a
-Cloud cluster, and re-measuring latency with Bedrock live.
+**Usable on your own material.** Policy is data rather than three hardcoded
+comparisons, so you can write rules the engine obeys. Runbooks you already have
+can be imported and grounded in that policy. Slack, Discord and bare webhooks
+receive real notifications with replay suppression proven against the ledger.
+Other agents can call the memory layer over HTTP or MCP with scoped, revocable
+keys.
 
-**Remaining.** Demo video, Devpost submission.
+**Deployed and reachable.** The full stack is live on AWS: ECS Fargate behind
+CloudFront for the API, Lambda and SQS for the worker, Amplify for the console,
+against a CockroachDB Cloud cluster running `SURVIVE ZONE FAILURE`. Bedrock is
+serving both the planner and the embeddings, which `/api/metrics` reports as it
+happens.
 
 Two features were deliberately not built. Multi-tenancy needs an org column on
 every table and scoping in every query, and half-done multi-tenancy is a
@@ -570,6 +783,6 @@ precisely so a live call can never hang the demo.
 Ashfaq, Track A: FastAPI routers, frontend, infrastructure.
 Shawki, Track B: core memory engine, AI logic, worker jobs.
 
-Repository: https://github.com/ahammadshawki8/Cascade
-Issues: https://github.com/ahammadshawki8/Cascade/issues
+Repository: https://github.com/ashfaqstu/Cascade
+Issues: https://github.com/ashfaqstu/Cascade/issues
 License: MIT

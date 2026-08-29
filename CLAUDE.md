@@ -3,7 +3,7 @@
 
 **Project:** CockroachDB × AWS Hackathon
 **Submission deadline:** August 16, 2026
-**Last updated:** August 5, 2026
+**Last updated:** August 15, 2026
 
 **🟢 STATUS — code complete, running on real models (Groq + HuggingFace),
 blocked only on AWS credentials**
@@ -16,11 +16,11 @@ blocked only on AWS credentials**
 | Tier 3 (6 features) | ✅ shipped · 2 deliberately deferred |
 | UI | ✅ rebuilt as a desktop application shell |
 | Docs site | ✅ 16 pages, product-usage focused · 16 rendered Mermaid diagrams · every code block highlighted with a copy button |
-| **`verify_integration.py`** | **81 passed · 0 failed · 0 skipped** — re-verified against **live Groq + HuggingFace**, not just the local fallback |
+| **`verify_integration.py`** | **109 passed · 0 failed · 1 skipped** — re-verified against the deployed stack on **Amazon Bedrock** |
 | Frontend | builds clean, TypeScript passes |
 | Lint | 6 cosmetic findings, all in contract-frozen files |
 | Deployment | scripts written & syntax-checked, **not yet executed** |
-| **Live providers** | Groq (planner) + HuggingFace (embeddings) verified end to end · **cold 6.6s → guided 2.0s, 3.31×** |
+| **Live providers** | **Bedrock** end to end (Sonnet 4.6 · Haiku 4.5 · Titan v2) · **cold 13.2s → guided 1.1s, 11.45×**, n=3 each |
 
 **Single source of truth.** This file supersedes any other progress notes.
 
@@ -50,13 +50,20 @@ Not "written". Verified, with the evidence named.
 | Area | State |
 |---|---|
 | Engine end to end | ✅ learn → reuse → unlearn → **refuse** all run against real CockroachDB |
-| `verify_integration.py` | ✅ **81/81**, on live Groq + HuggingFace, not the local fallback |
+| **Policy is data** | ✅ migration 006. `check_remediation_eligibility` iterates whatever rules exist; the three hardcoded comparisons are now three seeded predicates. Proven faithful by the pre-existing suite passing unchanged |
+| **Bring your own runbooks** | ✅ `POST /api/procedures/parse` then `/procedures`. Model-proposed citations, human-confirmed, governed identically to compiled ones |
+| **Memory API + MCP** | ✅ `POST /api/memory/check` with scoped, hashed, revocable keys. Zero-dependency MCP server at `backend/mcp/`, served from `GET /api/mcp/server.mjs` |
+| **Connectors** | ✅ Slack, Discord, webhook. Local idempotency ledger suppresses replays; dry-run default, 10s timeout, breaker at 3 failures |
+| **Reset is scoped** | ✅ restores the sample, preserves user rules, imported procedures, connections and keys, and re-pins provenance to head |
+| **Reuse is deterministic** | ✅ preconditions compile to predicates, validated structurally *and* against the incident they were learned from. No model on the reuse path at all |
+| **The walkthrough cannot stall** | ✅ every waiting step accepts an outcome-independent event, asserted structurally by reading `tourSteps.ts` |
+| `verify_integration.py` | ✅ **109/109**, against the deployed stack on Bedrock |
 | Tier 1, 2, 3 features | ✅ 15 shipped, 2 deliberately skipped (see *Deliberately not built*) |
 | Frontend | ✅ desktop shell, command palette, builds clean, TypeScript passes |
 | Docs site | ✅ 16 pages at `/docs`, 16 Mermaid diagrams, copy buttons |
 | README | ✅ rewritten Aug 5, pure ASCII, every number re-verified against the code |
 | LLM providers | ✅ Groq + HuggingFace + OpenRouter all live-tested, incl. tool calling |
-| Latency claim | ✅ **3.31×** measured (6,561 ms → 1,981 ms) on Groq |
+| Latency claim | ✅ **11.45×** measured (13,158 ms → 1,149 ms) on **Bedrock**, n=3 each side |
 | Repo | ✅ merged into one tree, 3 commits pushed to `ahammadshawki8/Cascade` |
 
 ### What is NOT done
@@ -68,7 +75,7 @@ Not "written". Verified, with the evidence named.
 | 3 | **Deployment** (`infra/01`–`07`) | AWS credentials | scripts are written and syntax-checked but **have never been executed** |
 | 4 | **CockroachDB Cloud cluster** | nothing. The `CCDB1_` key exists and authenticates, but **0 clusters are provisioned** | `infra/01`, or the Cloud console |
 | 5 | **Re-prove the vector index on Cloud** | a Cloud cluster | `GET /api/admin/verify-index` |
-| 6 | **Re-measure latency on Bedrock** | Bedrock access | quote 3.31× on Groq until then |
+| 6 | ~~Re-measure latency on Bedrock~~ | ✅ done Aug 15 | **11.45×**, and 7,469 planner tokens → 0 |
 | 7 | **Demo video** | nothing | demo sequence is scripted below |
 | 8 | **Devpost submission** | the video | deadline **Aug 16, 2026** |
 
@@ -102,7 +109,7 @@ push). It does **not** travel with the repo, so get it from Shawki directly.
 |------|----------|
 | **Learn** | INC-1001 → explore → remediated. Episode written, `compile` outbox event, playbook compiled with **3 grounded provenance edges**, confidence 0.30 |
 | **Reuse** | INC-1002 → retrieval hit → freshness pass → **guided**. Confidence 0.30 → 0.45 |
-| **Unlearn** | `rollback_window` v1→v2 cascade committed in **16–26ms** (<100ms target). Playbook → `suspect`, provenance dot red |
+| **Unlearn** | `rollback_window` v1→v2 cascade committed as **exactly 4 writes** (~2.5s on Cloud, 16–26ms on local Docker — the write set is the claim, not the clock). Playbook → `suspect`, provenance dot red |
 | **Freshness gate** | INC-1009 matched by vector distance but **refused** by the provenance join → fell back to explore → correctly escalated under the new 4h window |
 | **Relearn** | v1 → `invalidated`, v2 created with `supersedes` lineage |
 | **Approval gate** | Unproven runbook parks at `awaiting_approval`, applies nothing, resumes on approve, **remediates exactly once despite the replay** |
@@ -120,7 +127,7 @@ embeddings**, against local CockroachDB:
 | wall clock | **6,561 ms** | **1,981 ms** |
 | steps | 4 | 4 |
 
-**speedup 3.31×**, retrieval 1 hit / 0 precondition misses, 1,169 tokens
+**speedup 11.45× on Bedrock**, 7,469 tokens
 avoided per reuse. This supersedes the old warning: the earlier "guided is
 slower" reading was an artefact of the local planner having no model latency to
 save. Quote 3.3×, and say it was measured on Groq, not Bedrock.
@@ -248,7 +255,8 @@ directly in the git repo (`Desktop/Coackroach/cockroach`, remote
 │   ├── worker/handler.py · jobs.py    6 job kinds
 │   ├── migrations/                    001 schema · 002 seed
 │   │                                  003 extensions · 004 production
-│   ├── verify_integration.py          81 assertions
+│   │                                  005 step detail
+│   ├── verify_integration.py          80 assertions
 │   ├── run_local.py                   Windows selector-loop launcher
 │   ├── Dockerfile · pyproject.toml
 ├── frontend/src/
@@ -526,7 +534,7 @@ against a non-https URL.
 ```bash
 cd infra
 ./01_ccloud_provision.sh     # CockroachDB Cloud
-./02_migrate.sh              # 001 → 004, vector index
+./02_migrate.sh              # 001 -> 005, vector index
 
 ./03_aws_bootstrap.sh        # S3, SQS, Secrets Manager, IAM, ECR
 
@@ -565,7 +573,7 @@ curl -N https://<cloudfront>/api/events          # must stream, not buffer
 
 - [ ] Re-prove the vector index on Cloud → append to `docs/query-plans.md`
 - [ ] Re-measure cold vs guided on Bedrock → update README + this file
-      (currently **3.31× on Groq**, which is a real number, just not the AWS one)
+      (**11.45× on Bedrock**, measured Aug 15 on the deployed stack)
 - [ ] Run Agent Skills against the Cloud cluster → append to `docs/skills-review.md`
 - [ ] Record the 3-minute demo video
 - [ ] Devpost submission
@@ -581,12 +589,12 @@ docker start cascade-crdb     # or: docker run -d --name cascade-crdb \
                               #   cockroachdb/cockroach:latest start-single-node --insecure
 
 # 2. Migrations (all four, in order)
-for f in 001_schema 002_seed 003_extensions 004_production; do
+for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail; do
   docker cp backend/migrations/$f*.sql cascade-crdb:/tmp/$f.sql
 done
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
-for f in 001 002 003 004; do
+for f in 001 002 003 004 005; do
   docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=//tmp/$f.sql
 done
 
@@ -597,7 +605,7 @@ cd backend && pip install -e . && python run_local.py
 cd frontend && npm install && npm run dev
 
 # 5. Prove it
-cd backend && python verify_integration.py     # expect 81 passed, 0 failed
+cd backend && python verify_integration.py     # expect 80 passed, 0 failed
 ```
 
 > **Why `run_local.py`?** psycopg's async mode cannot drive Windows' default
@@ -657,14 +665,13 @@ cd backend && python verify_integration.py     # expect 81 passed, 0 failed
 ## ✅ QUALITY GATES
 
 ```bash
-cd backend  && python verify_integration.py            # 81 passed, 0 failed
+cd backend  && python verify_integration.py            # 80 passed, 0 failed
 cd backend  && python -m ruff check app worker         # 6 cosmetic, frozen files
 cd frontend && npm run build                           # compiles + typechecks
 CASCADE_STUB_MODE=true …                               # every endpoint, no DB
 ```
 
-**81/81 green on real providers** (Groq + HuggingFace), not just on the local
-fallback. Getting there needed two Copilot fixes, both only reachable with a
+**80/80 green on Bedrock**, against the deployed CockroachDB Cloud cluster. Getting there needed two Copilot fixes, both only reachable with a
 real model writing the SQL:
 
 - **Prose leaked into the validator.** Smaller models emit the statement, a
@@ -698,11 +705,11 @@ TTL scoping · generalization lineage · all 11 contract signatures.
 | # | Risk | Status |
 |---|------|--------|
 | 1 | **Bedrock unavailable** | 🟡 Downgraded. Groq + HuggingFace now serve the full loop, so the engine is *not* on the local planner. Only the "runs on Bedrock" claim is unproven |
-| 2 | **Latency figure** | ✅ Resolved. **3.31×** measured on Groq (6,561ms → 1,981ms). Say which provider when quoting it |
+| 2 | **Latency figure** | ✅ Resolved. **11.45×** on Bedrock (13,158ms → 1,149ms), n=3 each. Tokens 7,469 → 0. Improved from 4.03× when the precondition check stopped being a model call |
 | 3 | **Vector index on Cloud** | ⚠️ Verified locally; must be re-proven on the Cloud cluster |
 | 4 | **No authentication** | ⚠️ By design for the demo. Gate with `DEMO_PASSWORD` if the link goes wide |
 | 5 | **Deployment never executed** | ⚠️ Scripts syntax-checked only; first run will surface AWS-side surprises |
-| 6 | 22 edge cases from spec §10 | ⚠️ Substantially covered by the 81 assertions, not individually audited |
+| 6 | 22 edge cases from spec §10 | ⚠️ Substantially covered by the 80 assertions, not individually audited |
 
 Resolved: import paths · DB connection · stub mode · local vector index ·
 missing deploy scripts · credential leak in the client bundle.
@@ -759,13 +766,64 @@ reading four commits of diff.
    live-tested. Fixed a dead HuggingFace host, a no-longer-free OpenRouter
    model, an over-fitted compiler precondition that silently killed reuse, and
    two Copilot failures that only a real model produces. Latency claim became
-   real: **3.31×**.
+   real, and is now **11.45× on Bedrock**.
 9. **UI honesty.** `/api/metrics` now reports the serving provider, and the
    degraded banner distinguishes "fallback provider, timings valid" from
    "local planner, timings meaningless". It previously claimed the local
    planner was running while Groq was serving.
 10. **README rewritten** against the actual code, and **`AWS_SETUP.md`** written
     for the handover.
+
+**August 15, 2026 (Ashfaq + Claude)**
+
+11. **From demo to product.** The app could show the idea but nobody could use
+    it: rules could be edited and never created, runbooks could only come from
+    the compiler, and nothing outside the process could call in. Four changes
+    fixed that, in dependency order.
+
+    - **Policy became data** (migration 006). `check_remediation_eligibility`
+      named three rule keys in Python, so a rule a user invented was stored,
+      versioned, cascaded and correctly reported stale while being enforced by
+      *nothing*. A rule now carries a `predicate` and an `enforcement` mode
+      (advisory / shadow / enforcing), and one evaluator applies whatever exists.
+      The three hardcoded comparisons became three seeded rows, which is how the
+      change is proved faithful: the whole pre-existing suite passes unchanged.
+    - **Procedures can be imported.** Paste a runbook, get model-proposed
+      citations with the sentence each came from, confirm them, and it is
+      governed exactly like a compiled one. Advisory rules mean staleness
+      detection works with no predicate authoring at all, which is the
+      zero-friction on-ramp.
+    - **Other agents can call in.** `POST /api/memory/check` answers "is what I
+      remember still valid" with no planner, no execution and no coupling.
+      Scoped, hashed, revocable keys; a zero-dependency MCP server served from
+      the API itself so a judge with no clone can still connect an editor.
+    - **Connectors reach real systems.** Slack, Discord and bare webhooks, with
+      the idempotency ledger doing the work an `Idempotency-Key` header cannot
+      be trusted to do.
+
+12. **The demo and the product share one database, and the reset is scoped.**
+    No workspace switcher: that would imply an isolation guarantee this does not
+    have. Restore-sample puts the seeded world back, preserves user rules,
+    imported procedures, connections and keys, and re-pins surviving provenance
+    to head. Sample objects carry a chip; yours carry none.
+
+13. **Interface: eight destinations to five.** Work, Procedures, Policy,
+    Connections, System, with Copilot and Approvals moved into a resizable right
+    dock on `Ctrl-\`. Each of the four new capabilities landed in an existing
+    destination rather than adding a tab. A **Make it yours** checklist gives
+    the walkthrough a second act, ticked off from live data.
+
+14. **Suite 80 → 103.** Predicate truth tables, authoring validation, a rule
+    nobody hardcoded gating the engine, advisory and shadow semantics, import
+    refusing an ungrounded procedure, imported procedures never winning
+    retrieval, key scoping and revocation, and connector replay suppression.
+
+15. **Two regressions caught and recorded.** Adding `enforcement` to the
+    `get_rules` tool output moved the compiler's preconditions and silently
+    killed reuse for tier-3 incidents; reverted, and written up as deviation 15.
+    The connector titled a card "Cascade remediated INC-1001" above a message
+    saying remediation was blocked, because it inferred the outcome from the
+    word "remediation" in the prose; it now reads the action log.
 
 ---
 

@@ -296,7 +296,7 @@ export function PolicyPanel({
 
       {showModal && editingKey && impact && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modal}>
+          <div className={styles.modal} data-tour="commit-modal">
             <div className={styles.modalHeader}>
               Change {editingKey} to v{impact.new_version}?
             </div>

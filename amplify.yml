@@ -1,0 +1,26 @@
+version: 1
+applications:
+  # The repo is a monorepo: the Next.js app lives in frontend/, and the Python
+  # API lives in backend/. appRoot tells Amplify which one to build, so the
+  # console's auto-detection does not have to guess from the repo root.
+  - appRoot: frontend
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        # .next, not "/" or "out". This app has server-rendered routes (the
+        # /api/proxy route that keeps the admin token out of the browser), so
+        # it deploys to Amplify's compute platform rather than static hosting.
+        # A wrong baseDirectory here is what makes the deployed site 404.
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - .next/cache/**/*

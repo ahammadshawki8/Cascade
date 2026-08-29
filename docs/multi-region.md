@@ -1,12 +1,61 @@
-# Multi-Region Survival (T3.2)
+# Survivability and multi-region (T3.2)
 
-**Status:** documented and scripted; not applied to the demo cluster.
+**Status:** zone survival is **in force on the demo cluster and verifiable in
+the app**. Region survival is configured here but not applied, because the
+cluster spans one region and claiming otherwise would be false.
+
+Read it live rather than believing this file: the **Architecture** view in the
+running app calls `GET /api/architecture/survivability`, which returns
+`SHOW REGIONS`, `SHOW SURVIVAL GOAL` and `SHOW ZONE CONFIGURATION` straight
+from the cluster.
+
+## What is actually in force, today
+
+```
+SHOW SURVIVAL GOAL FROM DATABASE cascade   ->  zone
+
+SHOW REGIONS FROM DATABASE cascade
+  aws-us-east-1   [1a, 1b, 1c, 1d, 1f]
+
+SHOW ZONE CONFIGURATION FROM DATABASE cascade
+  num_replicas = 3
+  num_voters = 3
+  constraints = '{+region=aws-us-east-1: 1}'
+  voter_constraints = '[+region=aws-us-east-1]'
+  lease_preferences = '[[+region=aws-us-east-1]]'
+```
+
+Three voting replicas, placed in separate AWS availability zones inside
+`aws-us-east-1`. Losing an availability zone costs a leaseholder re-election
+and nothing else: no failover script, no promotion, no data loss, and the
+application never learns that it happened.
+
+That is a real distributed-systems property and it is switched on. It is not
+region survival, and the difference is stated plainly below rather than blurred.
+
+## Getting from zone survival to region survival
+
+One statement, once the cluster spans three or more regions:
+
+```sql
+ALTER DATABASE cascade SURVIVE REGION FAILURE;
+```
+
+The regions themselves are added at the cluster level in the CockroachDB Cloud
+console, which is a provisioning and billing decision rather than a code
+change. **Nothing in this repository changes.** No connection string, no query,
+no migration: the application does not know or care how many regions it is
+spread over, which is the entire argument for expressing survivability
+declaratively instead of building failover into the app.
+
+The rest of this document is what that configuration would be, and why.
+
+---
 
 CockroachDB's multi-region primitives are the reason it is the right database
-for this system, so this records exactly what Cascade would configure and why —
-including the parts we deliberately did **not** turn on for the hackathon
-cluster, because a free-tier single-region cluster cannot honour them and
-claiming otherwise would be false.
+for this system, so what follows records exactly what Cascade configures and
+why — including the parts deliberately **not** turned on for the hackathon
+cluster.
 
 ---
 

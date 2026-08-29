@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -31,8 +30,6 @@ from .models import PlaybookCandidate
 from .tools import SIDE_EFFECTING, TOOL_DEFINITIONS, TOOL_MAP, get_rules
 
 log = logging.getLogger(__name__)
-
-_INCIDENT_RE = re.compile(r"INC-\d+", re.IGNORECASE)
 
 
 async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
@@ -55,7 +52,7 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
             raise ValueError(f"task {task_id} not found")
         task_text = rows[0]["input"]
 
-        candidate, mode = await _select_mode(task_text, db)
+        candidate, mode = await _select_mode(task_text, db, task_id)
 
         await db.q(
             "UPDATE tasks SET status = 'running', mode = %s, playbook_id = %s WHERE task_id = %s",
@@ -83,6 +80,23 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
             status, result, trajectory = await _explore_mode(
                 task_id, task_text, db, sse_bus, interrupt_bus
             )
+
+        # `_guided_mode` falls back to explore on a precondition miss, records
+        # that on the task row, and runs the cold path — but this local `mode`
+        # still said "guided". Two things followed, both silent:
+        #
+        #   the episode was written as guided while having paid full planning
+        #   cost, which dragged cold-path latency and tokens into the guided
+        #   average and understated the very speedup the project claims; and
+        #
+        #   the compile below is gated on mode == "explore", so those runs
+        #   never became runbooks. An incident kind whose first encounter was a
+        #   precondition miss could never be learned at all.
+        #
+        # The row is authoritative because the fallback wrote it.
+        rows = await db.q("SELECT mode FROM tasks WHERE task_id = %s", (str(task_id),))
+        if rows and rows[0]["mode"]:
+            mode = rows[0]["mode"]
 
         # Parked awaiting a human: leave the row in `awaiting_approval` and
         # write nothing terminal. No episode either — the run has not finished,
@@ -135,11 +149,27 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
                 ("postmortem", json.dumps({"episode_id": str(episode_id)})),
             )
 
-        # Only a cold success teaches us something new worth compiling.
+        # Only a cold run that actually fixed something is worth compiling.
+        #
+        # `outcome == "success"` alone was letting escalations through, because
+        # an escalation finishes cleanly — it is policy working, not knowledge
+        # gained. Two things followed. The same run was recorded as an
+        # anti-playbook twenty lines above *and* offered as a procedure to
+        # replay, which cannot both be right. And whether it became a runbook
+        # depended on whether the planner happened to call the eligibility tool
+        # it did not strictly need: with the call there was provenance to cite
+        # and the compile succeeded, without it the compiler refused. Identical
+        # incident, identical policy, different answer depending on the model.
+        #
+        # An "escalate for bad deploy" runbook would also sit next to the real
+        # rollback one in vector space, so a tier-2 incident could retrieve it
+        # and then fail its preconditions — a hit followed by a miss, which is
+        # not a near miss but a runbook that cannot be reused.
+        #
         # The trajectory travels in the payload: `episodes` has no column for
         # it, and inlining keeps compilation working when S3 isn't configured.
         # It is bounded by max_steps_per_task, so the row stays small.
-        if mode == "explore" and outcome == "success" and episode_id:
+        if mode == "explore" and result == "remediated" and episode_id:
             await db.q(
                 "INSERT INTO outbox (kind, payload) VALUES (%s, %s)",
                 (
@@ -204,7 +234,9 @@ async def run_task(task_id: UUID, db, sse_bus=None, interrupt_bus=None) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _select_mode(task_text: str, db) -> tuple[PlaybookCandidate | None, str]:
+async def _select_mode(
+    task_text: str, db, task_id: UUID | None = None
+) -> tuple[PlaybookCandidate | None, str]:
     """Decide guided vs explore. Anything short of a fresh hit means explore."""
     from .freshness import check_freshness
     from .retrieval import retrieve
@@ -226,7 +258,24 @@ async def _select_mode(task_text: str, db) -> tuple[PlaybookCandidate | None, st
         await record_retrieval_event(
             db,
             "retrieval.stale_block",
-            {"playbook_id": str(candidate.playbook_id), "stale": reason},
+            {
+                # task_id makes the refusal attributable: /api/tasks/{id}/explain
+                # has to say *why this run* went cold, and without it the only
+                # available answer is an aggregate count.
+                "task_id": str(task_id) if task_id else None,
+                "playbook_id": str(candidate.playbook_id),
+                "playbook_name": candidate.name,
+                "playbook_version": candidate.version,
+                "stale": reason,
+                "stale_deps": [
+                    {
+                        "rule_key": d.rule_key,
+                        "compiled_against": d.depends_on,
+                        "head": d.head,
+                    }
+                    for d in freshness.stale_deps
+                ],
+            },
         )
         return None, "explore"
 
@@ -349,6 +398,120 @@ async def _explore_mode(
 # ---------------------------------------------------------------------------
 
 
+def _policy_params(rules: dict[str, Any]) -> dict[str, Any]:
+    """Flatten live rule parameters into names a compiled predicate can cite.
+
+    `incident.rollback_window` with `{"hours": 4}` becomes both
+    `rollback_window.hours` and `incident.rollback_window.hours`, because the
+    compiler writes the short form and being strict about which one is correct
+    buys nothing.
+
+    Resolved at run time rather than baked into the predicate on purpose: a
+    frozen number would go on meaning 24 after policy moved to 4, which is the
+    precise failure this whole project exists to prevent.
+    """
+    out: dict[str, Any] = {}
+    for rule in (rules or {}).get("rules", []):
+        key = str(rule.get("rule_key", ""))
+        short = key.split(".", 1)[-1]
+        for name, value in (rule.get("params") or {}).items():
+            out[f"{short}.{name}"] = value
+            out[f"{key}.{name}"] = value
+            out.setdefault(name, value)
+    return out
+
+
+def _explain_predicate_miss(
+    predicate: dict[str, Any], facts: dict[str, Any], rules: dict[str, Any]
+) -> list[str]:
+    """Name the conditions that actually failed, in readable form.
+
+    "Preconditions not met" is not evidence of anything. The console shows this
+    beside the runbook it refused, so it has to say which field, what was
+    required, and what was actually true.
+    """
+    from .policy import evaluate_condition
+
+    params = _policy_params(rules)
+    children = predicate.get("all") if isinstance(predicate, dict) else None
+    nodes = children if isinstance(children, list) else [predicate]
+
+    failed: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if evaluate_condition(node, facts, params) is not False:
+            continue
+        field = node.get("field", "?")
+        op = node.get("op", "?")
+        expected = params.get(node["param"]) if "param" in node else node.get("value")
+        failed.append(
+            f"{field} is {facts.get(field)!r}, needs to be {op} {expected!r}"
+        )
+    return failed or ["the runbook's preconditions do not hold for this incident"]
+
+
+async def _preconditions_hold(
+    spec: Any,
+    task_text: str,
+    incident: dict[str, Any],
+    rules: dict[str, Any],
+    fast: FastClient,
+) -> dict[str, Any]:
+    """Does this runbook apply here? Deterministically, wherever it can.
+
+    A compiled predicate is evaluated directly and no model is called. That is
+    the difference between a reuse path that re-asks the same question on every
+    run and one that answers it identically every time, and it removes a round
+    trip from the path whose entire purpose is being fast.
+
+    UNKNOWN counts as satisfied, matching what the prose check already did
+    deliberately. This is a routing decision, not a safety gate: policy is
+    enforced downstream and independently by `check_remediation_eligibility`, so
+    failing closed here buys no safety and costs the reuse.
+    """
+    predicate = getattr(spec, "precondition_predicate", None)
+
+    facts: dict[str, Any] = dict(incident) if isinstance(incident, dict) else {}
+    deployed_at = facts.get("deploy_timestamp")
+    if isinstance(deployed_at, str) and deployed_at:
+        try:
+            parsed = datetime.fromisoformat(deployed_at)
+            now = datetime.now(parsed.tzinfo or UTC)
+            facts["deploy_age_hours"] = round((now - parsed).total_seconds() / 3600, 1)
+        except ValueError:
+            log.debug("could not derive deploy age from %r", deployed_at)
+
+    if predicate:
+        from .policy import PredicateError, evaluate_condition
+
+        try:
+            verdict = evaluate_condition(predicate, facts, _policy_params(rules))
+        except PredicateError as exc:
+            # Validated at compile time, so this is close to unreachable. Say so
+            # rather than silently falling back to the slow path.
+            log.warning("compiled predicate failed to evaluate: %s", exc)
+        else:
+            if verdict is False:
+                return {
+                    "ok": False,
+                    "failed": _explain_predicate_miss(predicate, facts, rules),
+                    "checked_by": "predicate",
+                }
+            return {"ok": True, "failed": [], "checked_by": "predicate"}
+
+    # No compiled predicate: a runbook from before this existed, an imported
+    # one, or a spec whose predicate did not survive validation. Read the prose.
+    result = await fast.check_precondition(
+        spec.model_dump() if hasattr(spec, "model_dump") else spec,
+        task_text,
+        facts,
+        rules,
+    )
+    result["checked_by"] = "model"
+    return result
+
+
 async def _guided_mode(
     task_id: UUID,
     task_text: str,
@@ -359,23 +522,29 @@ async def _guided_mode(
 ) -> tuple[str, str | None, list[dict[str, Any]]]:
     """Warm path: replay a known-good plan with fresh parameters.
 
-    No planner in the loop — that is where the speedup comes from. A
-    precondition miss is not a failure of the playbook, so it falls back to
-    explore rather than counting against confidence.
+    No model in the loop at all — that is where the speedup comes from, and
+    since the preconditions became predicates it is literally true rather than
+    nearly true: retrieval is a vector index, freshness is a join, and the
+    precondition check is an evaluation. A precondition miss is not a failure of
+    the playbook, so it falls back to explore rather than counting against
+    confidence.
     """
     from .confidence import update_confidence
 
     spec = playbook.spec
-    fast = FastClient()
+    fast = FastClient()  # only reached when a runbook has no compiled predicate
 
     incident_id = _incident_from(task_text)
     incident = {}
     if incident_id:
         incident = await TOOL_MAP["get_incident"](incident_id=incident_id, db=db)
 
-    precondition = await fast.check_precondition(
-        spec.model_dump(), task_text, incident if isinstance(incident, dict) else {}
-    )
+    # Head rules travel with the check: rule-derived preconditions ("deploy
+    # occurred within rollback window") are unevaluable from incident data
+    # alone, and an unevaluable precondition was being read as a violation.
+    rules = await TOOL_MAP["get_rules"](domain="incident", db=db)
+
+    precondition = await _preconditions_hold(spec, task_text, incident, rules, fast)
     if not precondition.get("ok", True):
         failed = precondition.get("failed", [])
         log.info(
@@ -386,7 +555,13 @@ async def _guided_mode(
         await record_retrieval_event(
             db,
             "retrieval.precondition_miss",
-            {"playbook_id": str(playbook.playbook_id), "failed": failed},
+            {
+                "task_id": str(task_id),
+                "playbook_id": str(playbook.playbook_id),
+                "playbook_name": playbook.name,
+                "playbook_version": playbook.version,
+                "failed": failed,
+            },
         )
         await db.q(
             "UPDATE tasks SET mode = 'explore', playbook_id = NULL WHERE task_id = %s",
@@ -777,6 +952,21 @@ async def _write_episode(
             s3_key,
         ),
     )
+
+    # What the run actually did, kept so the history can replay it call by call
+    # rather than only naming the gate that decided it.
+    #
+    # A separate statement, and never allowed to fail the task: a database that
+    # has not taken migration 005 has no column to write to, and losing step
+    # detail is not a reason to lose the run.
+    try:
+        await db.q(
+            "UPDATE episodes SET trajectory = %s WHERE episode_id = %s",
+            (json.dumps(trajectory, default=str), str(episode_id)),
+        )
+    except Exception as exc:
+        log.warning("episode %s: step detail not retained (%s)", episode_id, exc)
+
     return episode_id
 
 
@@ -863,8 +1053,19 @@ def _outcome_for(status: str) -> str:
 
 
 def _incident_from(task_text: str) -> str | None:
-    match = _INCIDENT_RE.search(task_text)
-    return match.group(0).upper() if match else None
+    """Which incident this request is about, however the operator wrote it.
+
+    Shares retrieval's canonicaliser rather than keeping a second, stricter
+    pattern. They had drifted: retrieval accepted "inc 1009" while this
+    required the hyphen, so a loosely typed request would match a runbook and
+    then fail its own preconditions — the incident came back empty, so
+    "incident kind is 'bad_deploy'" could not be evaluated and was reported as
+    unmet. The run looked like a principled refusal and was really a parsing
+    difference between two regexes.
+    """
+    from .retrieval import canonical_incident_id
+
+    return canonical_incident_id(task_text)
 
 
 async def _publish(sse_bus, topic: str, data: dict[str, Any]) -> None:

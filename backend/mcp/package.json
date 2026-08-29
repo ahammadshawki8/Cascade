@@ -1,0 +1,24 @@
+{
+  "name": "@cascade/mcp",
+  "version": "1.0.0",
+  "description": "Ask Cascade whether what your agent remembers is still valid under current policy.",
+  "type": "module",
+  "bin": {
+    "cascade-mcp": "./cascade-mcp.mjs"
+  },
+  "main": "./cascade-mcp.mjs",
+  "files": [
+    "cascade-mcp.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent-memory",
+    "cascade"
+  ],
+  "license": "MIT"
+}

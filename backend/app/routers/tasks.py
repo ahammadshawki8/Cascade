@@ -3,9 +3,10 @@
 OWNER: Ashfaq (Track A).
 
 Endpoints:
-    POST /api/tasks       — Submit a new task (starts run_task in background)
-    GET  /api/tasks       — List recent tasks
-    GET  /api/tasks/{id}  — Get single task
+    POST /api/tasks               — Submit a new task (starts run_task in background)
+    GET  /api/tasks               — List recent tasks
+    GET  /api/tasks/{id}          — Get single task
+    GET  /api/tasks/{id}/explain  — Why this run went guided or cold
 """
 
 from __future__ import annotations
@@ -160,6 +161,248 @@ async def get_task(task_id: UUID):
     if row is None:
         raise HTTPException(404, f"task {task_id} not found")
     return Task(**row)
+
+
+# ---------------------------------------------------------------------------
+# Why did this run go the way it did
+# ---------------------------------------------------------------------------
+# The console shows *what* the agent did. This answers *why* — which is the
+# only part a reviewer cannot verify by watching. Four outcomes are possible
+# and they look nearly identical from the outside:
+#
+#   reused              memory matched and was fresh, so no planner ran
+#   refused_stale       memory matched but a rule it was compiled against moved
+#   refused_precondition memory matched but this incident is not what it covers
+#   no_match            memory had nothing close enough
+#
+# The middle two are the project's whole thesis, and both currently render as
+# "it just explored again", which reads as the retrieval having failed.
+
+_REASONS = {
+    "reused": (
+        "Reused a runbook from memory",
+        "Vector search matched a runbook, every rule it was compiled against is "
+        "still at head, and its preconditions hold for this incident. No planner "
+        "ran: the steps were replayed with fresh parameters.",
+    ),
+    "refused_stale": (
+        "Refused a matching runbook: it is stale",
+        "Vector search matched a runbook, but a policy rule it was compiled "
+        "against has changed since. Acting on it would apply superseded policy, "
+        "so it was refused and the incident was re-planned from scratch.",
+    ),
+    "refused_precondition": (
+        "Refused a matching runbook: preconditions do not hold",
+        "Vector search matched a runbook, but its preconditions are not "
+        "satisfied by this incident, so it does not apply here. Re-planned "
+        "from scratch rather than forcing a near-miss.",
+    ),
+    "no_match": (
+        "Nothing in memory matched",
+        "Vector search found no sufficiently similar runbook, so the agent "
+        "planned from policy and tools alone. This is the expensive path, and "
+        "it is what a successful run turns into reusable memory.",
+    ),
+}
+
+
+@router.get("/tasks/{task_id}/explain")
+async def explain_task(task_id: UUID):
+    """Reconstruct the decision behind one run.
+
+    Reads the audit trail rather than re-deriving anything: the explanation has
+    to be what actually happened, not a plausible reconstruction of it.
+    """
+    if _stub_mode():
+        raise HTTPException(400, "explain requires CASCADE_STUB_MODE=false")
+
+    from app.db import one, q
+
+    task = await one(
+        """
+        SELECT task_id, input, status, result, mode, playbook_id,
+               interrupt_reason, created_at, finished_at
+        FROM tasks WHERE task_id = %s
+        """,
+        (str(task_id),),
+    )
+    if task is None:
+        raise HTTPException(404, f"task {task_id} not found")
+
+    episode = await one(
+        "SELECT steps, latency_ms, tokens, outcome FROM episodes WHERE task_id = %s",
+        (str(task_id),),
+    )
+
+    # Retrieval decisions are audit rows, carrying task_id since the executor
+    # started stamping them. Runs from before that stamp simply report no
+    # recorded refusal, which is the honest answer rather than a guess.
+    events = await q(
+        """
+        SELECT kind, details, at FROM audit_log
+        WHERE kind IN ('retrieval.stale_block', 'retrieval.precondition_miss',
+                       'playbook.compiled')
+          AND details ->> 'task_id' = %s
+        ORDER BY at
+        """,
+        (str(task_id),),
+    )
+    by_kind = {e["kind"]: e["details"] for e in events}
+
+    if task["mode"] == "guided" and task["playbook_id"]:
+        reason = "reused"
+    elif "retrieval.precondition_miss" in by_kind:
+        reason = "refused_precondition"
+    elif "retrieval.stale_block" in by_kind:
+        reason = "refused_stale"
+    else:
+        reason = "no_match"
+
+    headline, detail = _REASONS[reason]
+    refusal = by_kind.get("retrieval.stale_block") or by_kind.get(
+        "retrieval.precondition_miss"
+    )
+
+    playbook = None
+    pb_id = task["playbook_id"] or (refusal or {}).get("playbook_id")
+    if pb_id:
+        playbook = await one(
+            """
+            SELECT playbook_id, name, version, status_cache, confidence,
+                   uses, successes, failures
+            FROM playbooks WHERE playbook_id = %s
+            """,
+            (str(pb_id),),
+        )
+
+    from app.core.retrieval import canonical_incident_id
+
+    incident = None
+    incident_id = canonical_incident_id(task["input"] or "")
+    if incident_id:
+        incident = await one(
+            """
+            SELECT incident_id, kind, severity, service_name, service_tier,
+                   state, deploy_timestamp,
+                   EXTRACT(EPOCH FROM (now() - deploy_timestamp)) / 3600 AS deploy_age_hours
+            FROM mock_incidents WHERE incident_id = %s
+            """,
+            (incident_id,),
+        )
+
+    # The comparison is what makes the cost legible: a guided run is only
+    # interesting next to what the cold path costs for the same work.
+    #
+    # Successful episodes only. An escalation short-circuits before doing the
+    # expensive part, so averaging it in drags both modes toward each other and
+    # understates the gap — the same workload has to be on both sides of the
+    # ratio or the ratio means nothing. Sample sizes travel with it so a thin
+    # comparison is visibly thin rather than quietly wrong.
+    averages = await q(
+        """
+        SELECT mode, AVG(latency_ms)::INT AS avg_ms, AVG(tokens)::INT AS avg_tokens,
+               COUNT(*)::INT AS runs
+        FROM episodes WHERE outcome = 'success' GROUP BY mode
+        """
+    )
+    avg = {r["mode"]: r for r in averages}
+    cold_ms = (avg.get("explore") or {}).get("avg_ms")
+    guided_ms = (avg.get("guided") or {}).get("avg_ms")
+
+    return {
+        "task_id": str(task["task_id"]),
+        "input": task["input"],
+        "status": task["status"],
+        "result": task["result"],
+        "mode": task["mode"],
+        "interrupt_reason": task["interrupt_reason"],
+        "decision": {
+            "reason": reason,
+            "headline": headline,
+            "detail": detail,
+            # Present only on a refusal, and named precisely: these are the
+            # provenance edges that failed, not a generic error string.
+            "stale_deps": (refusal or {}).get("stale_deps"),
+            "failed_preconditions": (refusal or {}).get("failed"),
+        },
+        "incident": incident,
+        "playbook": playbook,
+        "episode": episode,
+        "learned": by_kind.get("playbook.compiled"),
+        "comparison": {
+            "cold_avg_ms": cold_ms,
+            "guided_avg_ms": guided_ms,
+            "cold_runs": (avg.get("explore") or {}).get("runs", 0),
+            "guided_runs": (avg.get("guided") or {}).get("runs", 0),
+            "cold_avg_tokens": (avg.get("explore") or {}).get("avg_tokens"),
+            "guided_avg_tokens": (avg.get("guided") or {}).get("avg_tokens"),
+            "speedup": round(cold_ms / guided_ms, 2)
+            if cold_ms and guided_ms and guided_ms > 0
+            else None,
+        },
+    }
+
+
+@router.get("/tasks/{task_id}/steps")
+async def task_steps(task_id: UUID):
+    """What the run did, call by call.
+
+    The live stream carries this over SSE while a task runs, and then it is
+    gone. Anyone opening a past run gets the same shape from here, so the UI
+    has one renderer rather than a live view and a lesser historical one.
+
+    `retained: false` means the episode predates migration 005 (or the database
+    has not taken it), not that the run did nothing. Saying which is which
+    matters — an empty list would otherwise read as a run that made no calls.
+    """
+    if _stub_mode():
+        raise HTTPException(400, "steps require CASCADE_STUB_MODE=false")
+
+    from app.db import one
+
+    try:
+        row = await one(
+            "SELECT mode, steps, trajectory FROM episodes WHERE task_id = %s",
+            (str(task_id),),
+        )
+    except Exception as exc:
+        log.warning("step detail unavailable for %s: %s", task_id, exc)
+        return {"task_id": str(task_id), "retained": False, "steps": []}
+
+    if row is None:
+        # No episode: the run never executed a tool, or is still going.
+        return {"task_id": str(task_id), "retained": True, "steps": []}
+
+    trajectory = row.get("trajectory") or []
+    if not trajectory:
+        return {
+            "task_id": str(task_id),
+            "mode": row["mode"],
+            "retained": False,
+            "recorded_steps": row["steps"],
+            "steps": [],
+        }
+
+    steps = []
+    for entry in trajectory:
+        output = entry.get("tool_output")
+        steps.append(
+            {
+                "step_index": entry.get("step_index"),
+                "tool": entry.get("tool_name"),
+                "args": entry.get("tool_input") or {},
+                "output": output,
+                "duration_ms": entry.get("latency_ms"),
+                "error": output.get("error") if isinstance(output, dict) else None,
+            }
+        )
+
+    return {
+        "task_id": str(task_id),
+        "mode": row["mode"],
+        "retained": True,
+        "steps": steps,
+    }
 
 
 # ---------------------------------------------------------------------------

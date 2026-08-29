@@ -31,13 +31,33 @@ const API_ROOT =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8000";
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "dev-admin-token";
+/**
+ * Runtime first, build-time inlined value second (see next.config.ts).
+ *
+ * Amplify console variables reach the build but not the SSR runtime, so on the
+ * deployed site `process.env.ADMIN_TOKEN` was undefined and this fell through
+ * to `dev-admin-token`. The backend rejects that token, so every privileged
+ * call returned `403 invalid token` — reset, policy commits and approvals were
+ * all dead on the deployed demo while working perfectly in local dev.
+ *
+ * Trimmed on both paths: a console-pasted secret can carry trailing
+ * whitespace.
+ */
+// `||`, not `??`: an unset Amplify variable inlines as an empty string, which
+// `??` would happily accept as the token.
+const ADMIN_TOKEN = (
+  process.env.ADMIN_TOKEN ||
+  process.env.BUILD_ADMIN_TOKEN ||
+  "dev-admin-token"
+).trim();
 
 /**
  * Explicit allowlist. Without it this is an open relay that grants admin
  * rights to *every* backend route, which would be a worse hole than the one
  * it replaces. Patterns are anchored and match the full path.
  */
+const UUID = "[0-9a-fA-F-]{36}";
+
 const ALLOWED: Record<string, RegExp[]> = {
   GET: [
     /^admin\/verify-index$/,
@@ -46,12 +66,26 @@ const ALLOWED: Record<string, RegExp[]> = {
   ],
   POST: [
     /^admin\/reset$/,
+    // Create a rule, and change one. The second pattern must not be widened to
+    // match sub-paths: `rules/{key}` is the cascade, and anything else under a
+    // rule key is a different operation that has to be listed on its own.
+    /^rules$/,
     /^rules\/[A-Za-z0-9._-]+$/,
-    /^approvals\/[0-9a-fA-F-]{36}\/resolve$/,
-    /^playbooks\/[0-9a-fA-F-]{36}\/relearn$/,
+    /^rules\/[A-Za-z0-9._-]+\/definition$/,
+    /^procedures$/,
+    /^connections$/,
+    new RegExp(`^connections\\/${UUID}\\/test$`),
+    /^keys$/,
+    new RegExp(`^approvals\\/${UUID}\\/resolve$`),
+    new RegExp(`^playbooks\\/${UUID}\\/relearn$`),
     /^insights\/scan$/,
-    /^insights\/[0-9a-fA-F-]{36}\/dismiss$/,
+    new RegExp(`^insights\\/${UUID}\\/dismiss$`),
     /^generalize$/,
+  ],
+  PATCH: [new RegExp(`^connections\\/${UUID}$`)],
+  DELETE: [
+    new RegExp(`^connections\\/${UUID}$`),
+    new RegExp(`^keys\\/${UUID}$`),
   ],
 };
 
@@ -112,6 +146,8 @@ async function forward(
 
 export const GET = forward;
 export const POST = forward;
+export const PATCH = forward;
+export const DELETE = forward;
 
 // Never prerender or cache: every call is a privileged mutation or a live check.
 export const dynamic = "force-dynamic";

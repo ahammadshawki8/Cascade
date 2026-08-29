@@ -187,6 +187,92 @@ async def change_rule(
     )
 
 
+async def change_rule_definition(
+    rule_key: str,
+    new_body: str,
+    new_params: dict,
+    new_predicate: dict | None,
+    new_enforcement: str,
+    actor: str,
+) -> ImpactResult:
+    """Change what a rule says *and* how it decides, in one cascade.
+
+    Separate from `change_rule` because that signature is frozen: the Day-0
+    contract is the interface Track A builds against, and widening it would
+    break every caller's expectation of what it accepts. This is additive.
+    """
+    if _stub():
+        return await change_rule(rule_key, new_body, new_params, actor)
+
+    from .cascade import change_rule as _change
+
+    db, sse, interrupt_bus = _deps()
+    return await _change(
+        rule_key=rule_key,
+        new_body=new_body,
+        new_params=new_params,
+        actor=actor,
+        db=db,
+        interrupt_bus=interrupt_bus,
+        sse_bus=sse,
+        new_predicate=new_predicate,
+        new_enforcement=new_enforcement,
+    )
+
+
+async def create_rule(
+    rule_key: str,
+    domain: str,
+    body: str,
+    params: dict,
+    predicate: dict | None,
+    enforcement: str,
+    actor: str,
+) -> dict:
+    """Add a rule that did not exist before.
+
+    Not a cascade. A new rule invalidates nothing because nothing can cite a
+    version that has never existed, so this is a single insert at v1 plus its
+    audit row — deliberately not routed through `change_rule`, which would
+    report an impact set and an old version that are both fictional.
+    """
+    if _stub():
+        return {"rule_key": rule_key, "version": 1, "created": True}
+
+    import json as _json
+
+    db, _, _ = _deps()
+
+    existing = await db.q(
+        "SELECT version FROM rules WHERE rule_key = %s LIMIT 1", (rule_key,)
+    )
+    if existing:
+        raise ValueError(f"rule {rule_key!r} already exists")
+
+    await db.q(
+        """
+        INSERT INTO rules (rule_key, version, domain, body, params, changed_by,
+                           predicate, enforcement)
+        VALUES (%s, 1, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            rule_key,
+            domain,
+            body,
+            _json.dumps(params),
+            actor,
+            _json.dumps(predicate) if predicate is not None else None,
+            enforcement,
+        ),
+    )
+    await db.q(
+        "INSERT INTO audit_log (kind, actor, details) VALUES ('rule.create', %s, %s)",
+        (actor, _json.dumps({"rule_key": rule_key, "domain": domain,
+                             "enforcement": enforcement})),
+    )
+    return {"rule_key": rule_key, "version": 1, "created": True}
+
+
 async def answer_analytics_question(question: str) -> CopilotAnswer:
     """Ops Copilot: synthesize read-only SQL, run it, return SQL + rows."""
     if _stub():

@@ -94,13 +94,40 @@ class RuleCitation(BaseModel):
 
 
 class PlaybookSpec(BaseModel):
-    """Strict schema. Compiler output is rejected unless this parses."""
+    """Strict schema. Compiler output is rejected unless this parses.
+
+    The bounds were widened once, in migration 006, to admit procedures that
+    were imported rather than compiled. A runbook someone wrote in Confluence
+    has as many steps as it has, and most of them are prose a human performs,
+    not tool calls this engine can make. Those live in `manual_steps`, which
+    this model ignores and the database preserves; `steps` stays the executable
+    list, and an imported procedure legitimately has none.
+
+    Widening a maximum cannot invalidate anything that parsed before. The
+    `rule_citations` minimum is deliberately untouched: a procedure with no
+    provenance can never be found stale, which would make importing it
+    pointless and the library quietly untrustworthy.
+    """
 
     goal: str
-    preconditions: list[str] = Field(min_length=1, max_length=6)
+    preconditions: list[str] = Field(min_length=1, max_length=24)
     params: dict[str, Literal["string", "int"]] = Field(default_factory=dict)
-    steps: list[Step] = Field(min_length=2, max_length=8)
+    steps: list[Step] = Field(max_length=64)
     rule_citations: list[RuleCitation] = Field(min_length=1)
+    # Human procedure text, for imported runbooks. Not executable, and not
+    # offered to guided mode — see retrieval._phase2_pk_filter.
+    manual_steps: list[str] = Field(default_factory=list, max_length=64)
+    # The machine-checkable form of `preconditions`.
+    #
+    # The prose above is for a person reading the runbook. This is what actually
+    # decides whether it applies, and it is the difference between a reuse path
+    # that asks a model the same question on every run and one that evaluates a
+    # predicate. Written once at compile time, validated there, and from then on
+    # deterministic: the same incident gets the same answer forever.
+    #
+    # Null means the compiler could not produce a valid one, and the executor
+    # falls back to asking a model. See executor._preconditions_hold.
+    precondition_predicate: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +307,10 @@ class ImpactResult(BaseModel):
     impacted_playbooks: list[ImpactedPlaybook] = Field(default_factory=list)
     impacted_tasks: list[ImpactedTask] = Field(default_factory=list)
     committed: bool = False
+    # Set only on a real commit. The pair is the headline: the write set stays
+    # fixed while `impacted_playbooks` is free to be any length at all.
+    writes: int | None = None
+    duration_ms: int | None = None
 
 
 # ---------------------------------------------------------------------------

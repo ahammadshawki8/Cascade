@@ -16,6 +16,8 @@
 
 set -euo pipefail
 
+mkdir -p .awstmp
+
 REGION="${AWS_REGION:-us-east-1}"
 PROJECT_NAME="cascade"
 APP_NAME="${PROJECT_NAME}-frontend"
@@ -190,7 +192,8 @@ else
     NEXT_PUBLIC_API_URL="$API_URL" npm ci
     NEXT_PUBLIC_API_URL="$API_URL" CASCADE_API_URL="$API_URL" ADMIN_TOKEN="$ADMIN_TOKEN" npm run build
 
-    ZIP_PATH="/tmp/${APP_NAME}.zip"
+    mkdir -p .awstmp
+    ZIP_PATH=".awstmp/${APP_NAME}.zip"
     rm -f "$ZIP_PATH"
     zip -qr "$ZIP_PATH" .next public package.json next.config.ts
 

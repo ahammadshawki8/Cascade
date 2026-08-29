@@ -227,6 +227,11 @@ class RelearnResponse(BaseModel):
     playbook_id: UUID
     queued: bool
     message: str
+    # `queued: false` covers two opposite situations — one where a re-learn is
+    # already under way and one where there is nothing left to do — and a
+    # caller cannot tell them apart from the prose. The UI reports the first as
+    # progress and the second as finished, so it needs the distinction.
+    state: str = "queued"
 
 
 # Re-learning is an operator action: it re-derives a runbook under current
@@ -282,7 +287,10 @@ async def relearn_playbook(playbook_id: UUID, principal: Principal = Depends(req
     """
     if _stub_mode():
         return RelearnResponse(
-            playbook_id=playbook_id, queued=True, message="Stub mode — not queued."
+            playbook_id=playbook_id,
+            queued=True,
+            message="Stub mode — not queued.",
+            state="queued",
         )
 
     from app.db import one, q
@@ -301,6 +309,7 @@ async def relearn_playbook(playbook_id: UUID, principal: Principal = Depends(req
             playbook_id=playbook_id,
             queued=False,
             message="Already superseded by a newer version.",
+            state="superseded",
         )
 
     pending = await one(
@@ -314,7 +323,10 @@ async def relearn_playbook(playbook_id: UUID, principal: Principal = Depends(req
     )
     if pending is not None:
         return RelearnResponse(
-            playbook_id=playbook_id, queued=False, message="Re-learn already queued."
+            playbook_id=playbook_id,
+            queued=False,
+            message="A re-learn is already under way for this runbook.",
+            state="in_flight",
         )
 
     await q(
@@ -323,5 +335,5 @@ async def relearn_playbook(playbook_id: UUID, principal: Principal = Depends(req
     )
     log.info("relearn queued for playbook %s", playbook_id)
     return RelearnResponse(
-        playbook_id=playbook_id, queued=True, message="Re-learn queued."
+        playbook_id=playbook_id, queued=True, message="Re-learn queued.", state="queued"
     )

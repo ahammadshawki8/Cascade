@@ -1,0 +1,123 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background-color: var(--raised);
+}
+
+.head { display: flex; align-items: baseline; gap: 10px; }
+
+.title { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.progress {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--accent-dim);
+}
+
+.spacer { flex: 1; }
+
+.close {
+  display: inline-flex;
+  padding: 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.close:hover { color: var(--text); background-color: var(--bg); }
+
+.lead {
+  margin: 0;
+  max-width: 76ch;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.items { display: flex; flex-direction: column; gap: 6px; }
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background-color: var(--bg);
+}
+
+.itemNext { border-color: var(--accent-dim); }
+
+.itemDone { opacity: 0.6; }
+
+.tick {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bg);
+}
+
+.itemDone .tick { background-color: var(--st-active); border-color: var(--st-active); }
+
+.itemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.itemTitle { font-size: 12.5px; font-weight: 500; color: var(--text); }
+
+.itemDone .itemTitle { text-decoration: line-through; }
+
+.itemText { font-size: 11px; line-height: 1.5; color: var(--text-faint); }
+
+.go {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.go:hover { color: var(--text); border-color: var(--accent); }
+
+.finished {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--st-active);
+  background-color: rgba(93, 209, 129, 0.07);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+/* How long each one takes. Stated up front because "one minute" and "an
+   afternoon" are the difference between starting and closing the tab. */
+.effort {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-faint);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+
+.itemTitle { display: flex; align-items: center; }

@@ -221,6 +221,50 @@ reset list was written would otherwise have leaked state across demo resets.
 
 ---
 
+## 13. Bedrock model IDs are inference profiles, and the pinned models were unavailable
+
+**Specified.** §2 pins `anthropic.claude-sonnet-5` (agent + compiler) and
+`anthropic.claude-haiku-4-5` (fast path), and instructs that an ID unavailable
+in the account or region be substituted with the closest available Claude
+Sonnet/Haiku ID and recorded here.
+
+**Implemented.**
+
+```
+BEDROCK_AGENT_MODEL_ID=us.anthropic.claude-sonnet-4-6
+BEDROCK_FAST_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
+```
+
+**Why.** Two separate findings, verified live against account 897545289507 in
+us-east-1 on August 11, 2026.
+
+1. **On-demand invocation requires an inference profile id**, not a bare model
+   id. Profile ids carry a `us.` or `global.` region prefix. Calling the bare
+   `anthropic.claude-sonnet-5` returns `AccessDeniedException` reading "not
+   available for this account", and the bare dated Haiku id returns
+   `ValidationException` naming the inference-profile requirement outright.
+   The first of those is badly misleading: it reads as a model-access problem
+   when it is actually a throughput-mode problem. Bare ids are
+   provisioned-throughput only.
+2. **The newest generation is not granted on this account.** A live sweep of
+   `bedrock-runtime converse` found `us.anthropic.claude-sonnet-4-6`,
+   `us.anthropic.claude-sonnet-4-5-20250929-v1:0`,
+   `us.anthropic.claude-haiku-4-5-20251001-v1:0` and
+   `amazon.titan-embed-text-v2:0` granted, while `us.anthropic.claude-sonnet-5`,
+   `us.anthropic.claude-opus-5`, `us.anthropic.claude-opus-4-8` and
+   `us.anthropic.claude-opus-4-7` were all refused. Sonnet 4.6 is the closest
+   available model to the pinned Sonnet 5 and supports the tool calling the
+   planner and compiler depend on.
+
+**Impact.** None on architecture. Titan returns 1024 dimensions, matching
+`VECTOR(1024)` exactly, so retrieval is unaffected. Latency figures must be
+re-measured on Sonnet 4.6 rather than carried over from Groq. If Sonnet 5
+access is granted later, swapping `BEDROCK_AGENT_MODEL_ID` back is a one-line
+change with no code impact.
+
+---
+
 ## Not deviations — bugs found and fixed during integration
 
 Recorded because they were mis-reported as complete: `contracts.py` was never
@@ -239,4 +283,89 @@ regression-tested (`policy: an ineligible incident is never remediated`).
 
 ---
 
-*Last updated: August 4, 2026*
+## 13. `PlaybookSpec` bounds widened, and `manual_steps` added
+
+**Day-0 contract:** `preconditions` 1 to 6, `steps` 2 to 8, and every field of
+`PlaybookSpec` frozen as the compiler's output contract.
+
+**What was built:** `preconditions` up to 24, `steps` up to 64 with no minimum,
+and a new `manual_steps` list.
+
+**Why:** a runbook someone wrote in Confluence has as many steps as it has, and
+most of them are prose a human performs rather than tool calls this engine can
+make. Importing one was impossible under the old bounds, and importing is what
+makes the product useful to a team that has not adopted the agent.
+
+**Impact:** none on anything that parsed before. Widening a maximum cannot
+invalidate an existing document, and the compiler is still constrained by its
+own prompt and by `_safety_lint`. The `rule_citations` minimum of 1 was
+deliberately left alone: a procedure with no provenance can never be found
+stale, which would make the library quietly untrustworthy. An imported
+procedure therefore has zero executable steps and is filtered out of retrieval
+in `_phase2_pk_filter`, so it can be searched and governed but never replayed.
+
+## 14. A twelfth contract function, rather than a wider signature
+
+**Day-0 contract:** eleven functions in `contracts.py`, compared by exact
+signature in the assertion suite.
+
+**What was built:** `change_rule` keeps its exact four parameters and now
+carries a rule's predicate and enforcement mode forward unchanged.
+`change_rule_definition` and `create_rule` were added alongside it.
+
+**Why:** changing how a rule decides is a policy change in the fullest sense and
+has to move through the same cascade, but widening the frozen signature would
+break the contract assertion and every caller's expectation of what it accepts.
+Adding is additive; widening is not.
+
+**Impact:** none. All eleven original signatures still assert clean.
+
+## 15. `enforcement` is deliberately absent from the `get_rules` tool output
+
+**What happened:** adding one field to that tool's return value changed the
+compiled preconditions enough that a tier-3 incident stopped matching a runbook
+it had matched before. Retrieval hit, precondition miss, silent loss of reuse,
+and three autonomy assertions failed.
+
+**Why it stays out:** that output is the compiler's input as well as the
+planner's, so it is a model-shaped surface where any change is a behaviour
+change. The planner does not need the field, because policy binds through
+`check_remediation_eligibility` whatever `get_rules` says. It is exposed to
+humans and to external agents through the API instead.
+
+**Impact:** none, and one regression avoided. Recorded because the temptation to
+add it back will recur.
+
+## 16. Preconditions are compiled to predicates, not left as prose
+
+**Day-0 contract:** `PlaybookSpec.preconditions` is a list of sentences, checked
+before reuse by asking a model whether they hold.
+
+**What was built:** the sentences remain, for a person reading the runbook, and
+`precondition_predicate` was added beside them. That is what actually decides
+whether a runbook applies.
+
+**Why:** the prose check was an LLM call on the hot path, re-asking the same
+question on every reuse and free to answer differently each time. It did: a
+compiled precondition reading "the deploy is recent enough for the rollback
+window to permit rollback" required date arithmetic from a raw timestamp, the
+model got it wrong, retrieval hit, the precondition missed, and reuse died
+silently. A reviewer hit it inside five minutes and the guided walkthrough hung.
+
+**Impact:** the reuse path now calls no model at all. Retrieval is a vector
+index, freshness is a join, preconditions are an evaluation. The
+nondeterminism moved from the hot path to the cold one, where it is validated:
+a compiled predicate must reference real fields, must reference policy
+parameters that actually exist, and **must hold for the incident it was
+compiled from**. Anything else is rejected in favour of a predicate derived
+structurally from the trajectory. Older runbooks with no predicate still fall
+back to the prose check, so nothing already stored broke.
+
+The parameter check is not theoretical. The model's first attempt cited
+`auto_remediate_tier.max_tier` when the parameter is `min_tier`; it resolved to
+nothing, evaluated to UNKNOWN, was treated as satisfied, and would have passed
+forever while checking nothing.
+
+---
+
+*Last updated: August 15, 2026*

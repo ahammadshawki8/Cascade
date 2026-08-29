@@ -34,21 +34,56 @@ export interface Playbook {
   failure_count: number;
   supersedes?: string | null;
   spec: PlaybookSpec;
+  /**
+   * How this runbook came to exist. `compiled` is the agent learning one;
+   * `imported` and `authored` are procedures a person brought. Shown as a chip
+   * because "did the machine write this or did I" is the first thing anyone
+   * looking at a mixed library wants to know.
+   */
+  origin?: string;
 }
 
 interface RunbookLibraryProps {
   playbooks: Playbook[];
+  /** Offered from the empty state, where it is the most useful thing on screen. */
+  onImport?: () => void;
+  /**
+   * A cold run has finished and its runbook is still being compiled.
+   *
+   * Compilation is asynchronous — the run writes an outbox row, a worker picks
+   * it up, and the runbook lands seconds later. Nothing said so, so the obvious
+   * next move (immediately run a second incident) happened before there was
+   * anything to reuse, and the headline demo step silently failed. The library
+   * looking empty is exactly when a viewer most needs to be told to wait.
+   */
+  compiling?: boolean;
+  /**
+   * The runbook currently being re-learned.
+   *
+   * Re-learning is a full cold run plus a compile, running in a worker for the
+   * best part of a minute. It reported a toast and then went silent, which at
+   * the closing step of the demo reads as the button not having worked.
+   */
+  relearningId?: string | null;
   onRelearn?: (id: string) => void | Promise<void>;
   onViewEpisodes?: (id: string) => void;
 }
 
 export function RunbookLibrary({
   playbooks,
+  compiling = false,
+  relearningId = null,
   onRelearn,
   onViewEpisodes,
+  onImport,
 }: RunbookLibraryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  /** Runbooks that a newer version already replaces. */
+  const supersededBy = new Set(
+    playbooks.map((p) => p.supersedes).filter((id): id is string => Boolean(id))
+  );
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -92,12 +127,45 @@ export function RunbookLibrary({
       </div>
 
       <div className={styles.list}>
+        {compiling && (
+          <div className={styles.compiling}>
+            <span className={styles.compilingDots}>
+              <i /> <i /> <i />
+            </span>
+            <div>
+              <div className={styles.compilingTitle}>Writing a runbook from that run</div>
+              <div className={styles.compilingBody}>
+                Give it a few seconds. Until it lands there is nothing to reuse,
+                and the next incident would explore from scratch again.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {playbooks.length === 0 && !compiling && (
+          /* An empty list that only explains itself wastes the one moment
+             someone is definitely looking for something to do. There are two
+             ways to fill this library and both belong here. */
+          <div className={styles.empty}>
+            <div className={styles.emptyTitle}>No procedures yet</div>
+            <div className={styles.emptyBody}>
+              Fix an incident from the Inbox and the runbook compiled from it
+              appears here. Or bring one you already have.
+            </div>
+            {onImport && (
+              <button className={styles.emptyAction} onClick={onImport}>
+                Import a runbook
+              </button>
+            )}
+          </div>
+        )}
+
         {playbooks.map((pb) => {
           const isExpanded = expandedId === pb.playbook_id;
           const statusClass = getStatusClass(pb.status_cache);
 
           return (
-            <div key={pb.playbook_id} className={styles.card}>
+            <div key={pb.playbook_id} className={styles.card} data-tour="runbook-card">
               <div 
                 className={styles.cardHeader} 
                 onClick={() => toggleExpand(pb.playbook_id)}
@@ -105,6 +173,14 @@ export function RunbookLibrary({
                 <div className={styles.nameBlock}>
                   <span className={styles.name}>{pb.name}</span>
                   <span className={styles.version}>v{pb.version}</span>
+                  {/* Only the ones a person brought are marked. Labelling the
+                      compiled majority too would turn a useful distinction into
+                      visual noise on every row. */}
+                  {(pb.origin === "imported" || pb.origin === "authored") && (
+                    <span className={styles.origin}>
+                      {pb.origin === "imported" ? "imported" : "authored"}
+                    </span>
+                  )}
                 </div>
                 
                 <div className={styles.stats}>
@@ -121,11 +197,61 @@ export function RunbookLibrary({
               </div>
               
               <div className={styles.confidenceBar}>
-                <div 
-                  className={`${styles.confidenceFill} ${statusClass}`} 
+                <div
+                  className={`${styles.confidenceFill} ${statusClass}`}
                   style={{ width: `${pb.confidence * 100}%` }}
                 />
               </div>
+
+              {/* A quarantined runbook has exactly one useful next action, and
+                  it was buried behind expanding the card — so the moment the
+                  demo builds up to was followed by a dead end. Surfaced on the
+                  collapsed card, with the reason next to it. */}
+              {relearningId === pb.playbook_id && (
+                <div className={styles.relearning}>
+                  <span className={styles.relearnDots}>
+                    <i /> <i /> <i />
+                  </span>
+                  <span className={styles.relearnText}>
+                    Re-solving this incident under the current rules, then
+                    compiling the result as v{pb.version + 1}. This is a full
+                    cold run, so it takes about as long as the first one did.
+                  </span>
+                </div>
+              )}
+
+              {/* A runbook that already has a successor has been re-learned;
+                  offering Re-learn again reads as the last one having failed.
+                  A rejected re-learn leaves no successor, so the button
+                  correctly stays put in exactly the case where it is still the
+                  right action. */}
+              {relearningId !== pb.playbook_id &&
+                !supersededBy.has(pb.playbook_id) &&
+                (pb.status_cache === "suspect" || pb.status_cache === "invalidated") &&
+                onRelearn && (
+                  <div className={styles.quarantine}>
+                    <span className={styles.quarantineText}>
+                      Quarantined: a rule it was built on changed. Re-learn to
+                      rebuild it under current policy as v{pb.version + 1}.
+                    </span>
+                    <button
+                      data-tour="relearn"
+                      className={styles.quarantineBtn}
+                      disabled={busyId === pb.playbook_id}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setBusyId(pb.playbook_id);
+                        try {
+                          await onRelearn(pb.playbook_id);
+                        } finally {
+                          setBusyId(null);
+                        }
+                      }}
+                    >
+                      {busyId === pb.playbook_id ? "Queueing…" : "Re-learn"}
+                    </button>
+                  </div>
+                )}
 
               {isExpanded && (
                 <div className={styles.cardBody}>
@@ -172,6 +298,7 @@ export function RunbookLibrary({
                       pb.status_cache === "suspect") &&
                       onRelearn && (
                         <button
+                          data-tour="relearn"
                           className={`${styles.actionBtn} ${styles.actionBtnPrimary}`}
                           disabled={busyId === pb.playbook_id}
                           onClick={async (e) => {
@@ -208,3 +335,4 @@ export function RunbookLibrary({
     </div>
   );
 }
+

@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 
 from .confidence import INITIAL_CONFIDENCE
 from .models import PlaybookSpec, RuleCitation, Step
-from .retrieval import dedup_check, to_vector_literal
+from .retrieval import dedup_check, normalize_for_embedding, to_vector_literal
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +80,9 @@ async def compile_playbook(
     if violations:
         raise CompilationRejected("; ".join(violations))
 
+    if supersedes:
+        await _assert_provenance_not_weaker(supersedes, deps, db)
+
     name = _derive_name(spec, trajectory)
     domain = "incident"
 
@@ -97,7 +100,16 @@ async def compile_playbook(
     # shares the same precondition boilerplate, it also made genuinely
     # different runbooks look alike. The goal stays out of the vector and is
     # what the precondition check reads instead.
-    embedding_text = (task_text or spec.goal).strip()
+    # Normalised identically to the query side. These two calls are the only
+    # places a vector enters this space, and if they ever disagree retrieval
+    # silently degrades rather than failing, so they share one function.
+    #
+    # The kind comes from the trajectory rather than a second database read:
+    # this run already fetched the incident, and using what it actually saw
+    # keeps the runbook indexed by the situation it was genuinely learned from.
+    learned_from = _first_output(trajectory, "get_incident") or {}
+    kind = str(learned_from.get("kind")) if learned_from.get("kind") else None
+    embedding_text = normalize_for_embedding(task_text or spec.goal, kind)
     embedding = await embed_client.embed(embedding_text)
 
     if not supersedes:
@@ -122,6 +134,8 @@ async def compile_playbook(
         deps=deps,
         supersedes=supersedes,
         db=db,
+        task_id=task_id,
+        episode_id=episode_id,
     )
 
 
@@ -140,7 +154,14 @@ Return JSON only, matching exactly:
   "steps": [{"tool": "...", "args": {"k": "v"}}],         // 2-8 entries
   "rule_citations": [
     {"rule_key": "...", "rule_version": 1, "used_in_step": 0, "why": "..."}
-  ]
+  ],
+  "precondition_predicate": {                             // the checkable form
+    "all": [
+      {"field": "kind", "op": "eq", "value": "bad_deploy"},
+      {"field": "state", "op": "eq", "value": "open"},
+      {"field": "deploy_age_hours", "op": "lte", "param": "rollback_window.hours"}
+    ]
+  }
 }
 
 Rules:
@@ -150,13 +171,38 @@ Rules:
 - apply_remediation must be preceded by check_remediation_eligibility.
 - Never include idempotency_key; the executor injects it.
 - Cite only rule_keys that appear in the trajectory's get_rules output.
-- Preconditions state when this runbook applies IN GENERAL. They must not
-  encode incidental properties of the one incident it was learned from: no
-  specific severity (P1, P2, ...), no specific service name, no specific
-  incident id, no specific timestamp or date. A precondition only the training
-  incident can satisfy makes the runbook permanently unreusable.
-  Prefer the conditions policy actually gates on: incident kind, incident
-  state, service tier, and how long ago the deploy happened."""
+- Preconditions state when this runbook applies IN GENERAL. There are two ways
+  to get this wrong, and both make the runbook permanently unreusable:
+  (a) Encoding incidental properties of the one incident it was learned from:
+      a specific severity (P1, P2, ...), service name, incident id, timestamp
+      or date. Only the training incident would ever satisfy them.
+  (b) Freezing a policy value into the text: "service tier is 1", "deploy was
+      within the last 4 hours". Policy thresholds are checked at run time
+      against the live rules by check_remediation_eligibility, so restating a
+      number here is redundant, and it becomes wrong the moment policy moves.
+  State the shape of the situation instead.
+  Good: "incident kind is 'bad_deploy'"
+        "incident state is 'open'"
+        "the service tier is within what the auto_remediate_tier policy allows"
+        "the deploy is recent enough for the rollback window to permit rollback"
+  Bad:  "severity is P1"
+        "service is svc-checkout"
+        "service tier is 1"
+        "deploy occurred within the last 4 hours"
+- precondition_predicate is the same conditions in checkable form, and it is
+  what actually decides whether this runbook applies. The prose above is for a
+  person to read; this is for the engine, so that reuse never depends on a
+  model re-reading English at run time.
+  Fields you may use: kind, severity, service_name, service_tier, state,
+  deploy_age_hours, error_rate, cpu_usage, action.
+  Operators: eq, neq, lt, lte, gt, gte, in, nin, contains, exists, missing.
+  Combine with {"all": [...]}, {"any": [...]}, {"not": {...}}.
+  Compare against a literal with "value", or against a live policy parameter
+  with "param", written as <rule name without its domain>.<parameter>:
+      {"field": "deploy_age_hours", "op": "lte", "param": "rollback_window.hours"}
+      {"field": "service_tier", "op": "gte", "param": "auto_remediate_tier.min_tier"}
+  Always use "param" for anything policy controls, never a frozen number: the
+  number changes when policy changes, and the predicate must change with it."""
 
 
 async def _extract_spec(
@@ -183,13 +229,137 @@ async def _extract_spec(
         parsed = _parse_json(raw)
         if isinstance(parsed, dict):
             try:
-                return PlaybookSpec.model_validate(parsed)
+                spec = PlaybookSpec.model_validate(parsed)
             except Exception as exc:
                 # A malformed spec is a rejection signal, not something to patch
                 # up — fall through to the structural path, which is grounded.
                 log.warning("LLM spec failed schema validation, deriving instead: %s", exc)
+            else:
+                return _with_checked_predicate(spec, trajectory)
 
     return _derive_spec(trajectory, task_text)
+
+
+def _params_from(trajectory: list[dict[str, Any]]) -> dict[str, Any]:
+    """Live policy parameters, named the way a predicate cites them."""
+    rules = _first_output(trajectory, "get_rules") or {}
+    out: dict[str, Any] = {}
+    for rule in rules.get("rules", []):
+        key = str(rule.get("rule_key", ""))
+        short = key.split(".", 1)[-1]
+        for name, value in (rule.get("params") or {}).items():
+            out[f"{short}.{name}"] = value
+            out[f"{key}.{name}"] = value
+            out.setdefault(name, value)
+    return out
+
+
+def _derive_predicate(trajectory: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Build a precondition predicate from what the run actually did.
+
+    Structural, not generated. The incident's kind and the rules the eligibility
+    check consulted are both observed facts, so this cannot hallucinate and
+    cannot cite a parameter that does not exist.
+
+    It exists because the model kept writing `auto_remediate_tier.max_tier`
+    when the parameter is `min_tier`. Validation caught it every time and the
+    runbook fell back to the prose check, which is safe and defeats the point:
+    the goal is that reuse is deterministic, and a predicate that is usually
+    absent does not deliver that. So this is the default, and a model-written
+    predicate is only an override when it validates.
+    """
+    incident = _first_output(trajectory, "get_incident") or {}
+    eligibility = _first_output(trajectory, "check_remediation_eligibility") or {}
+    kind = incident.get("kind")
+    if not kind:
+        return None
+
+    used = eligibility.get("rule_versions_used") or {}
+    conditions: list[dict[str, Any]] = [
+        {"field": "kind", "op": "eq", "value": str(kind)},
+        {"field": "state", "op": "eq", "value": "open"},
+    ]
+    if "incident.auto_remediate_tier" in used:
+        conditions.append(
+            {"field": "service_tier", "op": "gte", "param": "auto_remediate_tier.min_tier"}
+        )
+    if "incident.rollback_window" in used:
+        conditions.append(
+            {"field": "deploy_age_hours", "op": "lte", "param": "rollback_window.hours"}
+        )
+    return {"all": conditions}
+
+
+def _with_checked_predicate(
+    spec: PlaybookSpec, trajectory: list[dict[str, Any]]
+) -> PlaybookSpec:
+    """Validate the compiled predicate here, or drop it.
+
+    This is the whole reason compiling a predicate is safer than interpreting
+    prose. The model writes it once; if it is wrong we find out now, where the
+    cost is falling back to the prose check, rather than on the tenth reuse.
+
+    Two checks, and the second is the one that catches real mistakes.
+
+    Structural: the fields exist, the operators exist, and every policy
+    parameter it cites is real. A predicate citing `max_tier` when the rule has
+    `min_tier` resolves to nothing and silently passes forever, which looks like
+    a working gate and is not one.
+
+    Behavioural: **the predicate must hold for the incident it was learned
+    from.** A runbook compiled from an incident it does not itself match is
+    incoherent, and this catches inverted comparisons, wrong fields and wrong
+    parameters in one cheap evaluation. It is the closest thing to a unit test
+    the compiler can run against its own output.
+    """
+    from .policy import PredicateError, evaluate_condition, validate_condition
+    from .policy.facts import DOMAIN_FACTS
+
+    known_fields = {f["field"] for f in DOMAIN_FACTS["incident"]}
+    params = _params_from(trajectory)
+    derived = _derive_predicate(trajectory)
+
+    def drop(reason: str) -> PlaybookSpec:
+        # Fall back to the *derived* predicate, not to prose. Reuse staying
+        # deterministic is the whole objective; dropping to a model call every
+        # time the model writes a bad predicate would mean the feature is
+        # absent exactly when it is most needed.
+        log.warning(
+            "compiled predicate rejected (%s); using the derived one instead", reason
+        )
+        spec.precondition_predicate = derived
+        return spec
+
+    if spec.precondition_predicate is None:
+        spec.precondition_predicate = derived
+        return spec
+
+    try:
+        validate_condition(spec.precondition_predicate, known_fields, set(params))
+    except PredicateError as exc:
+        return drop(str(exc))
+
+    incident = _first_output(trajectory, "get_incident") or {}
+    if not incident:
+        # Nothing to check it against. Structurally sound is all we can say.
+        return spec
+
+    facts = dict(incident)
+    deployed_at = facts.get("deploy_timestamp")
+    if isinstance(deployed_at, str) and deployed_at:
+        try:
+            from datetime import UTC, datetime
+
+            parsed = datetime.fromisoformat(deployed_at)
+            now = datetime.now(parsed.tzinfo or UTC)
+            facts["deploy_age_hours"] = round((now - parsed).total_seconds() / 3600, 1)
+        except ValueError:
+            pass
+
+    if evaluate_condition(spec.precondition_predicate, facts, params) is False:
+        return drop("it does not hold for the incident it was compiled from")
+
+    return spec
 
 
 def _derive_spec(trajectory: list[dict[str, Any]], task_text: str) -> PlaybookSpec:
@@ -216,12 +386,14 @@ def _derive_spec(trajectory: list[dict[str, Any]], task_text: str) -> PlaybookSp
         )
     steps = steps[:MAX_STEPS]
 
+    used = eligibility.get("rule_versions_used") or {}
+
     preconditions = [f"Incident kind is {kind}", "Incident state is open"]
     for reason_source, text in (
         ("incident.auto_remediate_tier", "Service tier is within the automation floor"),
         ("incident.rollback_window", "Last deploy is inside the rollback window"),
     ):
-        if reason_source in (eligibility.get("rule_versions_used") or {}):
+        if reason_source in used:
             preconditions.append(text)
 
     citations = [
@@ -231,7 +403,7 @@ def _derive_spec(trajectory: list[dict[str, Any]], task_text: str) -> PlaybookSp
             used_in_step=_index_of(steps, "check_remediation_eligibility"),
             why=f"policy gate for {action} on {kind}",
         )
-        for rule_key, version in (eligibility.get("rule_versions_used") or {}).items()
+        for rule_key, version in used.items()
     ]
     if not citations:
         raise CompilationRejected("no eligibility check in trajectory — nothing to cite")
@@ -242,6 +414,9 @@ def _derive_spec(trajectory: list[dict[str, Any]], task_text: str) -> PlaybookSp
         params={"incident_id": "string"},
         steps=steps,
         rule_citations=citations,
+        # One derivation, shared with the model path's fallback, so the two can
+        # never disagree about what this runbook's preconditions mean.
+        precondition_predicate=_derive_predicate(trajectory),
     )
 
 
@@ -337,6 +512,64 @@ def _safety_lint(spec: PlaybookSpec) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+async def _assert_provenance_not_weaker(
+    supersedes: UUID, deps: list[tuple[str, int, str, float]], db
+) -> None:
+    """A replacement must depend on at least what it replaces.
+
+    Re-learning re-solves the incident and compiles the result, and the new
+    provenance is whatever that run could corroborate. When the re-solve takes
+    a shorter path — escalating, say, instead of rolling back — it never reads
+    the rules the original consulted, so the successor is grounded on fewer of
+    them and every dropped rule is one that can no longer invalidate it.
+
+    Observed: a v2 compiled from an escalation cited only auto_remediate_tier
+    and notify, where v1 had cited rollback_window too. That v2 would survive a
+    rollback_window change untouched — the runbook would look healthy while
+    resting on policy nobody had checked. Silently trading away the ability to
+    go stale is the one regression this system must not ship, since going stale
+    correctly is the entire point.
+
+    Rejecting leaves the predecessor quarantined and visibly un-relearned,
+    which is the honest state: nothing was proven, so nothing is trusted.
+
+    Only rules that have *moved* are enforced, not the whole predecessor set.
+    Citations come from a model, and which rules it chooses to list varies run
+    to run: an early version of this check demanded an exact superset and
+    rejected a perfectly good v2 because that run had not listed
+    `incident.notify`, even though it did notify. Blocking a correct relearn
+    over phrasing variance is worse than the gap it closes.
+
+    A rule that has changed since the predecessor was compiled is the one that
+    caused the quarantine. If the replacement does not cite it, the relearn has
+    produced a runbook that the very change prompting it could not invalidate —
+    which is the failure this guards against.
+    """
+    rows = await db.q(
+        """
+        SELECT d.rule_key, d.rule_version,
+               (SELECT max(version) FROM rules WHERE rule_key = d.rule_key) AS head
+        FROM playbook_deps d
+        WHERE d.playbook_id = %s
+        """,
+        (str(supersedes),),
+    )
+    moved = {
+        r["rule_key"]
+        for r in rows
+        if r["head"] is not None and r["rule_version"] < r["head"]
+    }
+    proposed = {d[0] for d in deps}
+    lost = moved - proposed
+    if lost:
+        raise CompilationRejected(
+            "provenance weaker than the version it replaces: "
+            f"{', '.join(sorted(lost))} changed since the original was compiled "
+            "but is not cited by the replacement, which therefore could not be "
+            "invalidated by that rule."
+        )
+
+
 async def _insert_playbook(
     spec: PlaybookSpec,
     name: str,
@@ -345,6 +578,8 @@ async def _insert_playbook(
     deps: list[tuple[str, int, str, float]],
     supersedes: UUID | None,
     db,
+    task_id: UUID,
+    episode_id: UUID,
 ) -> UUID:
     """Insert playbook + deps + audit atomically.
 
@@ -406,6 +641,11 @@ async def _insert_playbook(
                         "version": version,
                         "supersedes": str(supersedes) if supersedes else None,
                         "deps": [d[0] for d in deps],
+                        # Which run taught this. /api/tasks/{id}/explain uses it
+                        # to close the loop: an explore run is only worth its
+                        # cost if it left something reusable behind.
+                        "task_id": str(task_id),
+                        "episode_id": str(episode_id),
                     }
                 ),
             ),

@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+mkdir -p .awstmp
+
 # Configuration
 REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -23,11 +25,22 @@ echo ""
 BUCKET_NAME="${PROJECT_NAME}-episodes-${ACCOUNT_ID}"
 echo "Creating S3 bucket: $BUCKET_NAME"
 
-aws s3api create-bucket \
-    --bucket "$BUCKET_NAME" \
-    --region "$REGION" \
-    --create-bucket-configuration LocationConstraint="$REGION" \
-    2>/dev/null || echo "Bucket already exists"
+# us-east-1 is the one region that must NOT be given a LocationConstraint:
+# every other region requires it, us-east-1 rejects it with
+# InvalidLocationConstraint. Passing it unconditionally meant this script
+# could never create its bucket in the region the project actually pins.
+# The error is surfaced rather than swallowed, so a genuine failure is not
+# reported as "already exists".
+if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+    echo "Bucket already exists"
+elif [ "$REGION" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$REGION"
+else
+    aws s3api create-bucket \
+        --bucket "$BUCKET_NAME" \
+        --region "$REGION" \
+        --create-bucket-configuration LocationConstraint="$REGION"
+fi
 
 aws s3api put-bucket-versioning \
     --bucket "$BUCKET_NAME" \
@@ -37,7 +50,8 @@ aws s3api put-bucket-lifecycle-configuration \
     --bucket "$BUCKET_NAME" \
     --lifecycle-configuration '{
         "Rules": [{
-            "Id": "archive-old-episodes",
+            "ID": "archive-old-episodes",
+            "Filter": {"Prefix": "episodes/"},
             "Status": "Enabled",
             "Transitions": [{
                 "Days": 90,
@@ -116,7 +130,7 @@ echo ""
 echo "Creating IAM roles..."
 
 # ECS Task Execution Role (pulls images, reads secrets)
-cat > /tmp/ecs-trust-policy.json <<EOF
+cat > .awstmp/ecs-trust-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -129,7 +143,7 @@ EOF
 
 aws iam create-role \
     --role-name "${PROJECT_NAME}-ecs-execution-role" \
-    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
+    --assume-role-policy-document file://.awstmp/ecs-trust-policy.json \
     2>/dev/null || echo "Role already exists"
 
 aws iam attach-role-policy \
@@ -139,11 +153,11 @@ aws iam attach-role-policy \
 # ECS Task Role (application permissions)
 aws iam create-role \
     --role-name "${PROJECT_NAME}-ecs-task-role" \
-    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
+    --assume-role-policy-document file://.awstmp/ecs-trust-policy.json \
     2>/dev/null || echo "Role already exists"
 
 # Attach inline policy for task role
-cat > /tmp/ecs-task-policy.json <<EOF
+cat > .awstmp/ecs-task-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -185,10 +199,10 @@ EOF
 aws iam put-role-policy \
     --role-name "${PROJECT_NAME}-ecs-task-role" \
     --policy-name "${PROJECT_NAME}-ecs-permissions" \
-    --policy-document file:///tmp/ecs-task-policy.json
+    --policy-document file://.awstmp/ecs-task-policy.json
 
 # Lambda Execution Role
-cat > /tmp/lambda-trust-policy.json <<EOF
+cat > .awstmp/lambda-trust-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -201,7 +215,7 @@ EOF
 
 aws iam create-role \
     --role-name "${PROJECT_NAME}-lambda-role" \
-    --assume-role-policy-document file:///tmp/lambda-trust-policy.json \
+    --assume-role-policy-document file://.awstmp/lambda-trust-policy.json \
     2>/dev/null || echo "Role already exists"
 
 aws iam attach-role-policy \
@@ -209,7 +223,7 @@ aws iam attach-role-policy \
     --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 
 # Lambda inline policy
-cat > /tmp/lambda-policy.json <<EOF
+cat > .awstmp/lambda-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -253,7 +267,7 @@ EOF
 aws iam put-role-policy \
     --role-name "${PROJECT_NAME}-lambda-role" \
     --policy-name "${PROJECT_NAME}-lambda-permissions" \
-    --policy-document file:///tmp/lambda-policy.json
+    --policy-document file://.awstmp/lambda-policy.json
 
 echo "✓ IAM roles created"
 echo ""

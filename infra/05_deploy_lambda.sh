@@ -11,14 +11,23 @@
 
 set -euo pipefail
 
+mkdir -p .awstmp
+
 REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 PROJECT_NAME="cascade"
 FUNCTION_NAME="${PROJECT_NAME}-worker"
 QUEUE_NAME="${PROJECT_NAME}-events"
 RUNTIME="python3.12"
-BUILD_DIR="/tmp/${PROJECT_NAME}-lambda-build"
-ZIP_PATH="/tmp/${FUNCTION_NAME}.zip"
+# Absolute paths: the script cd's to ../backend partway through, so a
+# relative build dir would resolve against the wrong directory from there.
+INFRA_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_DIR="$INFRA_DIR/.awstmp/${PROJECT_NAME}-lambda-build"
+ZIP_PATH="$INFRA_DIR/.awstmp/${FUNCTION_NAME}.zip"
+# aws.exe on Windows cannot read a git-bash path, so hand it a native one.
+ZIP_FOR_AWS="$(cygpath -w "$ZIP_PATH" 2>/dev/null || echo "$ZIP_PATH")"
+# Windows python cannot read a git-bash path either, so it gets native ones.
+BUILD_DIR_NATIVE="$(cygpath -w "$BUILD_DIR" 2>/dev/null || echo "$BUILD_DIR")"
 
 echo "=== Deploying Cascade worker to Lambda ==="
 echo "Region:   $REGION"
@@ -44,7 +53,7 @@ cp -r app worker "$BUILD_DIR/"
 # these flags pip resolves macOS/Windows wheels for psycopg's binary extension
 # and the function fails at import time with a cryptic ELF error.
 python -m pip install \
-    --target "$BUILD_DIR" \
+    --target "$BUILD_DIR_NATIVE" \
     --platform manylinux2014_x86_64 \
     --implementation cp \
     --python-version 3.12 \
@@ -62,7 +71,9 @@ python -m pip install \
 find "$BUILD_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
 find "$BUILD_DIR" -type d -name "tests" -prune -exec rm -rf {} + 2>/dev/null || true
 
-(cd "$BUILD_DIR" && zip -qr "$ZIP_PATH" .)
+# python's zipfile is used instead of `zip`: the git-bash zip binary
+# does not reliably accept the absolute paths used here on Windows.
+python -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[2])" "${ZIP_FOR_AWS%.zip}" "$BUILD_DIR_NATIVE"
 echo "✓ Package built: $(du -h "$ZIP_PATH" | cut -f1)"
 
 cd "$(dirname "$0")"
@@ -116,8 +127,8 @@ ENV_VARS="{
     RUN_WORKER_IN_PROCESS=false,
     DATABASE_URL=${DATABASE_URL},
     INTERNAL_SSE_SECRET=${INTERNAL_SSE_SECRET},
-    BEDROCK_AGENT_MODEL_ID=anthropic.claude-sonnet-5,
-    BEDROCK_FAST_MODEL_ID=anthropic.claude-haiku-4-5,
+    BEDROCK_AGENT_MODEL_ID=us.anthropic.claude-sonnet-4-6,
+    BEDROCK_FAST_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0,
     BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0,
     EPISODES_BUCKET=${PROJECT_NAME}-episodes-${ACCOUNT_ID},
     CASCADE_QUEUE_URL=${QUEUE_URL},
@@ -133,7 +144,7 @@ if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" >
     echo "Updating existing function..."
     aws lambda update-function-code \
         --function-name "$FUNCTION_NAME" \
-        --zip-file "fileb://${ZIP_PATH}" \
+        --zip-file "fileb://${ZIP_FOR_AWS}" \
         --region "$REGION" \
         --no-cli-pager >/dev/null
 
@@ -154,7 +165,7 @@ else
         --runtime "$RUNTIME" \
         --role "$ROLE_ARN" \
         --handler worker.handler.lambda_handler \
-        --zip-file "fileb://${ZIP_PATH}" \
+        --zip-file "fileb://${ZIP_FOR_AWS}" \
         --timeout 120 \
         --memory-size 1024 \
         --environment "Variables=${ENV_VARS}" \
@@ -217,10 +228,30 @@ aws lambda add-permission \
     --region "$REGION" \
     --no-cli-pager >/dev/null 2>&1 || echo "  (permission already granted)"
 
-# handler.lambda_handler routes on source == aws.events
+# handler.lambda_handler routes on source == aws.events.
+#
+# The target goes in as a JSON file rather than shorthand: `Input=` carries a
+# JSON document, and the shorthand parser stops at its first quote
+# ("Expected: '=', received: '\"'"). Writing the whole target as JSON sidesteps
+# the shorthand grammar entirely.
+TARGET_JSON="$INFRA_DIR/.awstmp/sweeper-target.json"
+cat > "$TARGET_JSON" <<EOF
+[
+  {
+    "Id": "1",
+    "Arn": "${FUNCTION_ARN}",
+    "Input": "{\"source\":\"aws.events\",\"sweeper\":true}"
+  }
+]
+EOF
+
+# Native path for the same reason as ZIP_FOR_AWS above: aws.exe cannot resolve
+# a git-bash /c/... path, and MSYS path conversion is disabled for this script.
+TARGET_FOR_AWS="$(cygpath -w "$TARGET_JSON" 2>/dev/null || echo "$TARGET_JSON")"
+
 aws events put-targets \
     --rule "$RULE_NAME" \
-    --targets "Id=1,Arn=${FUNCTION_ARN},Input={\"source\":\"aws.events\",\"sweeper\":true}" \
+    --targets "file://${TARGET_FOR_AWS}" \
     --region "$REGION" \
     --no-cli-pager >/dev/null
 

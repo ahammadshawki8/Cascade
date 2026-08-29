@@ -11,6 +11,8 @@
 
 set -euo pipefail
 
+mkdir -p .awstmp
+
 REGION="${AWS_REGION:-us-east-1}"
 PROJECT_NAME="cascade"
 CALLER_REF="${PROJECT_NAME}-$(date +%s)"
@@ -39,7 +41,7 @@ if [[ "$EXISTING_ID" != "None" && -n "$EXISTING_ID" ]]; then
         --query 'Distribution.DomainName' --output text)
     echo "✓ Distribution already exists: $EXISTING_ID ($DIST_DOMAIN)"
 else
-    cat > /tmp/cf-config.json <<EOF
+    cat > .awstmp/cf-config.json <<EOF
 {
   "CallerReference": "${CALLER_REF}",
   "Comment": "${PROJECT_NAME}-api",
@@ -108,7 +110,7 @@ EOF
     # The API also sends X-Accel-Buffering: no for the same reason.
 
     echo "Creating distribution (this takes a few minutes to propagate)..."
-    DIST_JSON=$(aws cloudfront create-distribution --distribution-config file:///tmp/cf-config.json)
+    DIST_JSON=$(aws cloudfront create-distribution --distribution-config file://.awstmp/cf-config.json)
     EXISTING_ID=$(echo "$DIST_JSON" | python -c 'import json,sys; print(json.load(sys.stdin)["Distribution"]["Id"])')
     DIST_DOMAIN=$(echo "$DIST_JSON" | python -c 'import json,sys; print(json.load(sys.stdin)["Distribution"]["DomainName"])')
     echo "✓ Distribution created: $EXISTING_ID"

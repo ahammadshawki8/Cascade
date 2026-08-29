@@ -32,6 +32,8 @@
   gap: 2px;
   width: 100%;
   align-items: center;
+  /* Anchors the "More" flyout, which is positioned just outside the rail. */
+  position: relative;
 }
 
 .spacer { flex: 1; }
@@ -129,4 +131,135 @@
   font-style: normal;
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* --- the "More" flyout ---------------------------------------------------- */
+
+.more {
+  position: absolute;
+  left: 52px;
+  z-index: 60;
+  min-width: 232px;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 5px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.moreItem {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "icon label badge" "icon hint badge";
+  column-gap: 9px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.moreItem:hover {
+  background-color: var(--surface-hover);
+}
+
+.moreItem > svg { grid-area: icon; color: var(--text-dim); }
+
+.moreLabel {
+  grid-area: label;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.moreHint {
+  grid-area: hint;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.moreBadge {
+  grid-area: badge;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  background-color: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+/* --- expanded rail -------------------------------------------------------
+   Labels by default. The collapsed icon-only form is still there for anyone
+   who wants the horizontal space, and their choice persists. */
+
+.barWide {
+  width: 188px;
+  align-items: stretch;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.barWide .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 6px;
+  justify-content: flex-start;
+}
+
+.wordmark {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.barWide .item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 11px;
+  padding-left: 11px;
+  border-radius: var(--radius-sm);
+}
+
+.itemLabel {
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.barWide .badge {
+  position: static;
+  margin-left: auto;
+}
+
+.collapse {
+  display: none;
+}
+
+.barWide .collapse {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 7px 11px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.barWide .collapse:hover {
+  color: var(--text-dim);
+  background-color: var(--raised);
 }

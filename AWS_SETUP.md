@@ -235,9 +235,9 @@ aws bedrock list-foundation-models --region us-east-1 \
 
 Note this is the `bedrock` control plane, not `bedrock-runtime`.
 
-### Fix the model IDs
+### Check the model IDs
 
-**This will almost certainly bite you.** `backend/.env` currently pins:
+`backend/.env` pins:
 
 ```bash
 BEDROCK_AGENT_MODEL_ID=anthropic.claude-sonnet-5
@@ -245,13 +245,17 @@ BEDROCK_FAST_MODEL_ID=anthropic.claude-haiku-4-5
 BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
 ```
 
-Real Bedrock IDs carry a version suffix. The Titan one above is correctly
-formed; the two Anthropic ones do not match the usual pattern and look like
-placeholders. Copy the **exact** IDs from the `list-foundation-models` output
-into `backend/.env`.
+All three are correctly formed. On the current Bedrock Messages API a Claude
+model ID is the plain first-party id with an `anthropic.` prefix and no date
+suffix, so `anthropic.claude-sonnet-5` is exactly right. The dated form
+(`anthropic.claude-3-5-sonnet-20241022-v2:0`) belongs to the older
+`InvokeModel` / `Converse` integration, which uses a different request shape
+and is not what this project calls.
 
-A wrong model ID fails with `ValidationException`, which is easy to misread as
-a permissions problem.
+Still confirm the three are present in `list-foundation-models` output for the
+account and region, since availability varies. A model ID that is genuinely
+wrong fails with `ValidationException`, which is easy to misread as a
+permissions problem.
 
 ### Ask the application itself
 
