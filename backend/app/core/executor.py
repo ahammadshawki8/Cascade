@@ -388,9 +388,43 @@ async def _explore_mode(
         log.warning("task %s exhausted its budget: %s", task_id, exc)
         return "failed", None, executor.trajectory
 
-    if final.get("outcome") == "success":
+    # The model's word is not the record.
+    #
+    # This read `final["outcome"] == "success"` and filed the run as remediated,
+    # which meant the planner could report a remediation nobody performed. It
+    # does, too: on an incident that is already resolved the planner reads the
+    # state, correctly concludes there is nothing to do, and finishes
+    # successfully -- having called no eligibility check and no remediation
+    # tool. The run was then recorded as `remediated`.
+    #
+    # Nothing unsafe was applied. `apply_remediation` refuses a non-open
+    # incident on its own and was never reached. The damage is to the record:
+    # metrics, the savings ledger and the episode all count a remediation that
+    # did not happen, and a runbook compiled from such a trajectory would be a
+    # procedure for doing nothing.
+    #
+    # So the outcome is now read from the trajectory. A run remediated
+    # something if and only if a remediation tool returned success.
+    if _applied_remediation(trajectory) and final.get("outcome") == "success":
         return "succeeded", "remediated", trajectory
     return "succeeded", "escalated", trajectory
+
+
+def _applied_remediation(trajectory: list[dict[str, Any]]) -> bool:
+    """Did any step actually apply a remediation and get told it worked?
+
+    An idempotent replay counts: the action exists, this run simply did not have
+    to perform it twice. `apply_remediation` reports that as `success` carrying
+    `note: idempotent_replay`, which is the honest answer to "was this incident
+    remediated" even though the row was written by an earlier attempt.
+    """
+    for entry in trajectory or []:
+        if entry.get("tool_name") != "apply_remediation":
+            continue
+        output = entry.get("tool_output")
+        if isinstance(output, dict) and output.get("success") is True:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
