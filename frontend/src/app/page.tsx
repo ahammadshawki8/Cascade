@@ -1397,7 +1397,10 @@ export default function CascadeApp() {
   })();
 
   return (
-    <div className={styles.shell}>
+    // `appShell` is a plain global class, not a module one. It carries the
+    // cursor rules in globals.css, which have to be scoped to the application
+    // and kept off the docs site, where an I-beam over prose is correct.
+    <div className={`${styles.shell} appShell`}>
       <ActivityBar
         active={view}
         onSelect={setView}

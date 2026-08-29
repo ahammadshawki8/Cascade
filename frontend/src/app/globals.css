@@ -122,3 +122,46 @@ html, body {
 button {
   font-family: inherit;
 }
+
+/* An application, not a document.
+   ---------------------------------------------------------------------------
+   The browser default gives every run of text an I-beam, which is right for a
+   page you read and wrong for a shell you operate: the pointer flickers between
+   arrow and I-beam as it crosses labels, metrics and card titles, and the whole
+   surface reads as a web page rather than an app.
+
+   Applied to the shell only. The docs site under /docs is a document, and there
+   the I-beam is correct, so this is scoped rather than global.
+
+   Text that is genuinely worth selecting keeps its cursor below: inputs, code,
+   anything monospace carrying an id or a command, and anything explicitly
+   marked selectable. Turning the cursor off is a statement about what kind of
+   surface this is, not an attempt to stop people copying things. */
+.appShell,
+.appShell * {
+  cursor: default;
+}
+
+.appShell input,
+.appShell textarea,
+.appShell [contenteditable="true"],
+.appShell code,
+.appShell pre,
+.appShell .selectable,
+.appShell [data-selectable] {
+  cursor: text;
+}
+
+.appShell a,
+.appShell button,
+.appShell [role="button"],
+.appShell [role="tab"],
+.appShell summary,
+.appShell label[for] {
+  cursor: pointer;
+}
+
+.appShell button:disabled,
+.appShell [role="button"][aria-disabled="true"] {
+  cursor: default;
+}
