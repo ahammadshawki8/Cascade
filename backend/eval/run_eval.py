@@ -159,9 +159,20 @@ class Api:
         return data if isinstance(data, list) else data.get("rules", [])
 
     async def set_window(self, hours: int) -> dict[str, Any]:
-        """Commit the cascade that tightens the rollback window."""
+        """Commit the cascade that tightens the rollback window.
+
+        Carries the existing body text through unchanged. `ChangeRuleRequest`
+        requires it, and the body is a template holding `{hours}` rather than a
+        baked number, so re-sending it verbatim changes only the parameter --
+        which is the point. Rewriting the prose here would confound the
+        experiment with an edit to what the rule says.
+        """
+        current = await self.get(f"/api/rules/{WINDOW_RULE}")
+        body = (current.get("current") or {}).get("body") or ""
+        if not body:
+            raise RuntimeError(f"could not read the current body of {WINDOW_RULE}")
         return await self.post(
-            f"/api/rules/{WINDOW_RULE}", {"params": {"hours": hours}}
+            f"/api/rules/{WINDOW_RULE}", {"body": body, "params": {"hours": hours}}
         )
 
     async def run_task(self, text: str, poll: float = 1.5, limit: float = 180.0) -> dict:
@@ -176,6 +187,30 @@ class Api:
                 return task
             await asyncio.sleep(poll)
         return {"task_id": task_id, "status": "timeout", "result": None, "mode": None}
+
+    async def await_compile(self, poll: float = 5.0, limit: float = 180.0) -> int:
+        """Block until the learn run's runbook actually exists.
+
+        Compilation is asynchronous: the executor writes an outbox event and the
+        worker compiles from it, which takes about 25 seconds against the
+        deployed stack. `POST /api/tasks` returning `succeeded` says the
+        incident was remediated, not that a procedure was derived from it.
+
+        Racing past this is silently fatal to phase 2. Change the rule while the
+        runbook does not yet exist and the cascade invalidates nothing, because
+        there is nothing to invalidate -- and then the runbook compiles against
+        the *new* rule version and arrives perfectly fresh. The refusal under
+        test never happens, every arm agrees, and the report says the difference
+        is zero.
+        """
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            data = await self.get("/api/playbooks")
+            count = int(data.get("count") or 0)
+            if count:
+                return count
+            await asyncio.sleep(poll)
+        return 0
 
     async def explain(self, task_id: str) -> dict[str, Any]:
         try:
@@ -389,30 +424,76 @@ async def _phase(
     arms: set[str],
     report: Report,
     policy_at_learn: str | None,
+    limit: int = 0,
 ) -> str:
     print(f"\n=== phase {phase}: rollback_window = {hours}h ===", flush=True)
 
     await api.reset()
-    if hours != PHASE_ONE_HOURS:
-        impact = await api.set_window(hours)
-        report.notes.append(
-            f"Phase {phase}: cascade committed in {impact.get('writes', '?')} writes, "
-            f"invalidating {len(impact.get('impacted_playbooks', []))} runbook(s)."
-        )
 
+    # Learn FIRST, under the original policy, in both phases.
+    #
+    # This order is the experiment. Tightening the window before compiling the
+    # runbook would produce a runbook derived from the 4h rule -- perfectly
+    # fresh, citing current versions, refusing nothing on provenance grounds.
+    # Phase 2 would then be measuring "can these systems apply a stricter rule
+    # they were just handed", which every one of them can, and the staleness
+    # claim would never be exercised at all.
+    #
+    # Learning at 24h and *then* moving to 4h is what leaves a procedure that
+    # was correct when it was written and is wrong when it runs.
     if "cascade" in arms:
-        print(f"  learning a runbook from {LEARN_INCIDENT} ...", flush=True)
+        print(f"  learning a runbook from {LEARN_INCIDENT} (policy as seeded) ...", flush=True)
         learned = await api.run_task(f"Remediate {LEARN_INCIDENT}")
         report.notes.append(
             f"Phase {phase}: learn run finished {learned.get('status')}"
-            f"/{learned.get('result')} in mode {learned.get('mode')}."
+            f"/{learned.get('result')} in mode {learned.get('mode')}, "
+            f"under the seeded {PHASE_ONE_HOURS}h window."
+        )
+        print("  waiting for the runbook to compile ...", flush=True)
+        compiled = await api.await_compile()
+        report.notes.append(
+            f"Phase {phase}: {compiled} runbook(s) compiled and pinned before "
+            f"any policy change."
+            if compiled
+            else f"Phase {phase}: NO runbook compiled -- the reuse and refusal "
+            f"paths are not under test in this run."
+        )
+        if not compiled:
+            print(
+                "  WARNING: no runbook compiled; reuse and refusal are untested",
+                flush=True,
+            )
+
+    policy_at_learn_now = policy_prose(await api.rules())
+
+    if hours != PHASE_ONE_HOURS:
+        print(f"  tightening the rollback window to {hours}h ...", flush=True)
+        impact = await api.set_window(hours)
+        report.notes.append(
+            f"Phase {phase}: cascade committed in {impact.get('writes', '?')} writes, "
+            f"invalidating {len(impact.get('impacted_playbooks', []))} runbook(s), "
+            f"after the runbook was compiled rather than before."
         )
 
     incidents = await api.incidents()
     rules = await api.rules()
     cases = build_cases(incidents, rules)
     policy_now = policy_prose(rules)
-    learn_policy = policy_at_learn or policy_now
+    learn_policy = policy_at_learn or policy_at_learn_now
+
+    # The incident the runbook was compiled from is not a test case.
+    #
+    # Running it remediates it, so by scoring time its state is no longer open
+    # and policy refuses it for that reason alone. Cascade then "wins" the case
+    # by recognising it had already fixed it, which is true, uninteresting, and
+    # inflates the score on a training example. Dropped for every arm so all
+    # three are scored on identical cases.
+    cases = [c for c in cases if c.incident_id != LEARN_INCIDENT]
+
+    if limit:
+        # Smoke mode. The first N by incident id rather than a sample, so two
+        # smoke runs are comparable to each other.
+        cases = cases[:limit]
 
     print(f"  {len(cases)} cases", flush=True)
 
@@ -449,8 +530,15 @@ async def main(args: argparse.Namespace) -> int:
 
     api = Api(args.api, args.admin_token)
     try:
-        learn_policy = await _phase(api, 1, PHASE_ONE_HOURS, arms, report, None)
-        await _phase(api, 2, PHASE_TWO_HOURS, arms, report, learn_policy)
+        learn_policy = None
+        if args.phase in ("1", "both"):
+            learn_policy = await _phase(
+                api, 1, PHASE_ONE_HOURS, arms, report, None, args.limit
+            )
+        if args.phase in ("2", "both"):
+            await _phase(
+                api, 2, PHASE_TWO_HOURS, arms, report, learn_policy, args.limit
+            )
         if not args.keep:
             await api.reset()
             report.notes.append("World restored to the sample after the run.")
@@ -488,6 +576,14 @@ def cli() -> int:
     p.add_argument("--arm", choices=("both", "baseline", "cascade"), default="both")
     p.add_argument("--out", default="eval/out", help="where to write results")
     p.add_argument("--keep", action="store_true", help="do not reset when finished")
+    p.add_argument(
+        "--limit", type=int, default=0,
+        help="score only the first N cases per phase (smoke mode; 0 = all)",
+    )
+    p.add_argument(
+        "--phase", choices=("1", "2", "both"), default="both",
+        help="run one phase only; phase 2 alone has no learned runbook to reuse",
+    )
     p.add_argument("--dry-run", action="store_true")
     return asyncio.run(main(p.parse_args()))
 

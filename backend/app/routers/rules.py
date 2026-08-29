@@ -372,9 +372,15 @@ async def get_rule(rule_key: str):
 
     from app.db import one, q
     current_row = await one(
+        # predicate and enforcement are selected because the response carries
+        # them. They used to be absent from this list while the constructor
+        # below still read them, so `.get()` returned None and every rule was
+        # reported as advisory with no predicate however it was actually
+        # configured -- an API saying a rule decides nothing while it gates
+        # every incident.
         """
         SELECT rule_key, version, domain, body, params,
-               valid_from, valid_to, changed_by
+               valid_from, valid_to, changed_by, predicate, enforcement
         FROM rules
         WHERE rule_key = %s AND valid_to IS NULL
         """,
