@@ -1,0 +1,262 @@
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  background-color: var(--bg);
+  animation: pageIn 0.5s ease both;
+}
+
+@keyframes pageIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* A single soft light behind the text. Cheap, and it stops the page reading as
+   a flat rectangle without costing a background image. */
+.aura {
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  width: 900px;
+  height: 900px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(62, 207, 214, 0.09) 0%,
+    rgba(62, 207, 214, 0.03) 38%,
+    transparent 68%
+  );
+}
+
+.inner {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  padding: 56px 28px 48px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 34px;
+  animation: rise 0.6s ease both;
+}
+
+.wordmark {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.headline {
+  margin: 0 0 18px;
+  font-size: 38px;
+  line-height: 1.16;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  animation: rise 0.6s ease 0.06s both;
+}
+
+.lede {
+  margin: 0 0 34px;
+  max-width: 58ch;
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--text-dim);
+  animation: rise 0.6s ease 0.12s both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ------------------------------------------------------------------ beats */
+
+.beats {
+  list-style: none;
+  margin: 0 0 38px;
+  padding: 0 0 0 3px;
+  border-left: 1px solid var(--border);
+}
+
+.beat {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 0 0 17px 21px;
+  opacity: 0.24;
+  transform: translateX(-3px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+
+.beat:last-child {
+  padding-bottom: 0;
+}
+
+.beatOn {
+  opacity: 1;
+  transform: none;
+}
+
+.beatDot {
+  position: absolute;
+  left: -5px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--bg);
+  border: 1.5px solid var(--border-strong);
+  transition: border-color 0.55s ease, background-color 0.55s ease;
+}
+
+.beatOn .beatDot {
+  border-color: var(--accent);
+  background-color: var(--accent);
+}
+
+/* The last beat is the refusal, which is the whole product. It drains to the
+   quarantine colour rather than lighting up, because that is what happens. */
+.beatFinal .beatDot {
+  border-color: var(--st-suspect);
+  background-color: var(--st-suspect);
+}
+
+.beatText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.beatLabel {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.beatFinal .beatLabel {
+  color: var(--st-suspect);
+}
+
+.beatDetail {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* ---------------------------------------------------------------- choices */
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-bottom: 26px;
+  animation: rise 0.6s ease 0.2s both;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  padding: 16px 18px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+  background-color: #1F262B;
+  transform: translateY(-1px);
+}
+
+.choicePrimary {
+  border-color: var(--accent-dim);
+}
+
+.choicePrimary:hover {
+  border-color: var(--accent);
+}
+
+.choicePrimary svg:first-child {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.choiceText strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.choiceText em {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.choiceArrow {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.choice:hover .choiceArrow {
+  color: var(--accent);
+  transform: translateX(3px);
+}
+
+.footnote {
+  margin: 0;
+  max-width: 58ch;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--text-faint);
+  animation: rise 0.6s ease 0.28s both;
+}
+
+@media (max-width: 640px) {
+  .headline { font-size: 29px; }
+  .inner { padding: 40px 20px 36px; }
+}
+
+/* Respect a stated preference for less motion: the beats still resolve, they
+   just arrive rather than travel. */
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .brand,
+  .headline,
+  .lede,
+  .choices,
+  .footnote {
+    animation: none;
+  }
+  .beat {
+    transition: opacity 0.2s linear;
+    transform: none;
+  }
+}

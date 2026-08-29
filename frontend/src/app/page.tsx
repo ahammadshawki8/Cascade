@@ -21,6 +21,7 @@ import { IntelligencePanel } from "../components/IntelligencePanel";
 import { IncidentComposer } from "../components/IncidentComposer";
 import type { Explanation, RelearnState, StepEvent } from "../components/runTypes";
 import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
+import { Landing, landingSeen, resetLanding } from "../components/Landing";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
@@ -104,6 +105,14 @@ export default function CascadeApp() {
    * something you choose at the end of it, and it is remembered once chosen.
    */
   const [shellMode, setShellMode] = useState<ShellMode>("guided");
+  /**
+   * The landing screen, shown before the app on a first visit.
+   *
+   * Starts true on the server and is lowered after mount if this browser has
+   * been here before, because localStorage is unreachable during SSR and
+   * flashing the shell before the landing is worse than a brief hold.
+   */
+  const [landing, setLanding] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   /**
@@ -230,9 +239,17 @@ export default function CascadeApp() {
     if (window.localStorage.getItem(MODE_KEY) === "work") setShellMode("work");
   }, []);
 
+  useEffect(() => {
+    if (landingSeen()) setLanding(false);
+  }, []);
+
   const applyMode = useCallback((next: ShellMode) => {
     setShellMode(next);
-    window.localStorage.setItem(MODE_KEY, next);
+    try {
+      window.localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* private browsing */
+    }
     // Never leave someone looking at a destination that is no longer in the
     // rail. Switching to work mode while on System would otherwise render a
     // view with no way back to it and no icon to explain where it went.
@@ -950,6 +967,28 @@ export default function CascadeApp() {
   };
 
   /**
+   * Entering work mode empties the workspace without destroying anything.
+   *
+   * Two halves, and both are needed. Resetting clears what the walkthrough
+   * *did* — the runbooks it compiled, the runs, the episodes — while leaving
+   * every rule, procedure, connection and key the user brought. Filtering then
+   * hides what the walkthrough *shipped with*: the seeded incidents and rules.
+   *
+   * Deleting the sample outright would be the more literal reading of "empty"
+   * and a worse product. The demo world is how anyone evaluates this, and a
+   * switch that destroys it is a switch nobody can safely press. Nothing here
+   * is unrecoverable: leaving work mode brings it all back.
+   */
+  const enterWorkMode = useCallback(async () => {
+    applyMode("work");
+    setWorkTab("inbox");
+    setDockOpen(false);
+    await handleResetDemo();
+    setToast("Work mode. Your workspace is empty — connect something to fill it.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyMode]);
+
+  /**
    * The walkthrough describes a world in a known state, so it puts the world
    * in that state first.
    *
@@ -1200,6 +1239,16 @@ export default function CascadeApp() {
     }));
 
     const modeCommand: Command[] = [
+      {
+        id: "landing:show",
+        label: "Show the opening screen again",
+        hint: "The introduction, and the choice between a walkthrough and work",
+        group: "Actions",
+        run: () => {
+          resetLanding();
+          setLanding(true);
+        },
+      },
       shellMode === "work"
         ? {
             id: "mode:guided",
@@ -1476,6 +1525,34 @@ export default function CascadeApp() {
     );
   })();
 
+  /**
+   * The landing owns the first decision, and nothing renders behind it.
+   *
+   * An overlay would have been less code and worse: the shell showing through
+   * gives away the answer before the question has been read, and a viewer who
+   * can see an incident list is already reasoning about incidents rather than
+   * about whether they want a tour.
+   *
+   * The early return sits below every hook, so the data layer still connects
+   * while this is up. That is deliberate — by the time someone picks an option
+   * the metrics are already warm — and it is why this is a return rather than a
+   * branch further out.
+   */
+  if (landing) {
+    return (
+      <Landing
+        onGuided={() => {
+          setLanding(false);
+          void startTour();
+        }}
+        onWork={() => {
+          setLanding(false);
+          void enterWorkMode();
+        }}
+      />
+    );
+  }
+
   return (
     // `appShell` is a plain global class, not a module one. It carries the
     // cursor rules in globals.css, which have to be scoped to the application
@@ -1498,11 +1575,28 @@ export default function CascadeApp() {
           <span className={styles.viewTitle}>{activeView.label}</span>
           <span className={styles.viewHint}>{activeView.hint}</span>
           <span className={styles.headerSpacer} />
-          {tourStep === null && (
-            <button className={styles.headerAction} onClick={startTour}>
-              Guided walkthrough
-            </button>
-          )}
+          {/* One button, and what it offers depends on where you are.
+              In guided mode the useful next step is putting the demo away and
+              starting for real; in work mode it is seeing the demo again. The
+              walkthrough itself stays reachable from Ctrl-K in both. */}
+          {tourStep === null &&
+            (shellMode === "work" ? (
+              <button
+                className={styles.headerAction}
+                onClick={() => applyMode("guided")}
+                title="Bring back the sample world and every screen"
+              >
+                Explore the demo
+              </button>
+            ) : (
+              <button
+                className={styles.headerAction}
+                onClick={() => void enterWorkMode()}
+                title="Empty the workspace and start on your own material"
+              >
+                Switch to work mode
+              </button>
+            ))}
         </header>
 
         <div className={styles.metrics}>
@@ -1548,6 +1642,7 @@ export default function CascadeApp() {
                           only={tourReveal}
                           onRun={(input) => void handleTaskSubmit(input)}
                           onReset={() => void handleResetDemo()}
+                          onlyMine={shellMode === "work"}
                         />
                       </div>
                     )}

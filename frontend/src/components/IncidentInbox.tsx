@@ -57,6 +57,7 @@ export function IncidentInbox({
   only = null,
   onRun,
   onReset,
+  onlyMine = false,
 }: {
   apiBase: string;
   refreshKey: number;
@@ -75,6 +76,13 @@ export function IncidentInbox({
    * broken without giving them the fix in the same breath is not much help.
    */
   onReset?: () => void;
+  /**
+   * Work mode: show only incidents the user created.
+   *
+   * The seeded ones are INC-1xxx and anything authored here is INC-9xxx, so
+   * the split is in the id rather than in a flag that could drift.
+   */
+  onlyMine?: boolean;
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -103,6 +111,7 @@ export function IncidentInbox({
 
   const open = incidents
     .filter((i) => i.state !== "resolved")
+    .filter((i) => !onlyMine || !/^INC-1\d{3}$/.test(i.incident_id))
     .filter((i) => only === null || only.includes(i.incident_id));
 
   /**
@@ -128,6 +137,7 @@ export function IncidentInbox({
   );
   const worldAged =
     !loading &&
+    !onlyMine && // work mode hides the sample entirely, so its age is moot
     badDeploys.length > 0 &&
     badDeploys.every((i) => i.within_window === false);
 
@@ -157,7 +167,9 @@ export function IncidentInbox({
 
       {policy && (
         <div className={styles.policyBar}>
-          <span className={styles.policyTitle}>Policy in force</span>
+          <span className={styles.policyTitle}>
+            {onlyMine ? "Policy in force (yours to change)" : "Policy in force"}
+          </span>
           <span className={styles.policyItem}>
             roll back only within <b>{policy.rollback_window_hours}h</b> of deploy
           </span>
@@ -172,6 +184,8 @@ export function IncidentInbox({
         <div className={styles.empty}>
           {only !== null && only.length === 0
             ? "The walkthrough is looking at something else right now."
+            : onlyMine
+            ? "Nothing here yet. Describe an incident under Author, or let an agent send one in from Connections."
             : "No open incidents. Reset the demo world to bring them back."}
         </div>
       )}
