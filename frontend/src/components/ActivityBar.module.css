@@ -241,8 +241,29 @@
   margin-left: auto;
 }
 
+/* Visible in BOTH states.
+   This was `display: none`, made visible only by `.barWide .collapse`, so
+   collapsing the rail removed the only control that could expand it again. The
+   preference persists, so a viewer who collapsed it once had a permanently
+   narrow rail and no way back short of clearing site data. */
 .collapse {
-  display: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.collapse:hover {
+  color: var(--text-dim);
+  background-color: var(--raised);
 }
 
 .barWide .collapse {

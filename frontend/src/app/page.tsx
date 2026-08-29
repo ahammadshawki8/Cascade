@@ -1752,6 +1752,7 @@ export default function CascadeApp() {
                     onReplay={handleReplay}
                     highlightRuleKey={highlightRule}
                     prefillParams={prefillParams}
+                    hideSample={shellMode === "work"}
                   />
                 </div>
               )}

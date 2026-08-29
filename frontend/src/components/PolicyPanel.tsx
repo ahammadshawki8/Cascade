@@ -10,6 +10,8 @@ export interface Rule {
   body: string;
   params: Record<string, any>;
   changed_by: string;
+  /** True for the rules that shipped with the product. Set by the API. */
+  sample?: boolean;
 }
 
 export interface ImpactedPlaybook {
@@ -51,7 +53,8 @@ interface PolicyPanelProps {
   // For the demo step ③, we might want to highlight a row
   highlightRuleKey?: string;
   /** Parameters carried over from an insight recommendation. */
-  prefillParams?: Record<string, any>;
+  prefillParams?: Record<string, any>;  /** Work mode: hide the rules that shipped with the product. */
+  hideSample?: boolean;
 }
 
 export function PolicyPanel({
@@ -61,7 +64,22 @@ export function PolicyPanel({
   onReplay,
   highlightRuleKey,
   prefillParams,
+  hideSample = false,
 }: PolicyPanelProps) {
+  /**
+   * Work mode hides the rules that shipped, but must not pretend they are gone.
+   *
+   * They are still enforced on every run. A policy view that showed nothing
+   * while four rules quietly gated every decision would be the exact failure
+   * this product exists to prevent, so the count of what is hidden stays on
+   * screen with a way to see it.
+   */
+  const [revealSample, setRevealSample] = useState(false);
+  const hiddenCount = hideSample
+    ? rules.filter((r) => r.sample).length
+    : 0;
+  const visible =
+    hideSample && !revealSample ? rules.filter((r) => !r.sample) : rules;
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editParams, setEditParams] = useState<Record<string, any>>({});
   const [impact, setImpact] = useState<ImpactResult | null>(null);
@@ -171,11 +189,35 @@ export function PolicyPanel({
       <div className={styles.panel}>
         <div className={styles.header}>
           <span className={styles.title}>Policy Engine</span>
-          <span className={styles.title}>{rules.length} active rules</span>
+          <span className={styles.title}>{visible.length} active rules</span>
         </div>
 
+        {hideSample && hiddenCount > 0 && (
+          <div className={styles.sampleNote}>
+            <span>
+              {revealSample
+                ? `Showing ${hiddenCount} rule${hiddenCount === 1 ? "" : "s"} that shipped with the product.`
+                : `${hiddenCount} rule${hiddenCount === 1 ? "" : "s"} shipped with the product and still govern every run.`}
+            </span>
+            <button
+              type="button"
+              className={styles.sampleToggle}
+              onClick={() => setRevealSample((v) => !v)}
+            >
+              {revealSample ? "Hide them" : "Show them"}
+            </button>
+          </div>
+        )}
+
+        {visible.length === 0 && (
+          <div className={styles.emptyPolicy}>
+            No rules of your own yet. <b>New rule</b> writes one the engine will
+            enforce on every run, versioned and cascaded like any other.
+          </div>
+        )}
+
         <div className={styles.list}>
-          {rules.map((rule) => {
+          {visible.map((rule) => {
             const isEditing = editingKey === rule.rule_key;
             const currentParams = isEditing ? editParams : rule.params;
             const isHighlighted = highlightRuleKey === rule.rule_key;
