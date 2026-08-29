@@ -34,6 +34,7 @@ export const NAV: Section[] = [
       { href: "/docs/approvals", label: "Approving actions" },
       { href: "/docs/intelligence", label: "Measuring value" },
       { href: "/docs/copilot", label: "Asking questions" },
+      { href: "/docs/evidence", label: "The evidence" },
     ],
   },
   {
