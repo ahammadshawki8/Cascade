@@ -9,6 +9,7 @@ import {
   Shield,
   Plug,
   Network,
+  FlaskConical,
   RotateCcw,
   Command,
   BookMarked,
@@ -20,7 +21,7 @@ import {
 const EXPANDED_KEY = "cascade_rail_expanded";
 
 /**
- * Five destinations, one per noun.
+ * Six destinations, one per noun.
  *
  * There used to be eight, which was a tour of features rather than a product:
  * Incidents, History, Runbooks, Policy, Architecture, Copilot, Intelligence and
@@ -39,8 +40,22 @@ const EXPANDED_KEY = "cascade_rail_expanded";
  * Copilot and Approvals are not destinations at all. You consult a copilot
  * *while* looking at something, and navigating away from what prompted the
  * question was always the wrong shape; they live in the right dock now.
+ *
+ * Evidence is the sixth, and it had to earn the slot against the rule above.
+ * It qualifies on the same test as the other five: it is a noun, and it is a
+ * thing this system holds rather than a feature it performs. Every other
+ * destination shows what Cascade does; this one shows whether it is any better
+ * than not having it, measured against two baselines on the same incidents.
+ * That claim is the reason the rest of the product is worth navigating, and
+ * burying it inside System would have filed the argument under plumbing.
  */
-export type ViewId = "work" | "procedures" | "policy" | "connections" | "system";
+export type ViewId =
+  | "work"
+  | "procedures"
+  | "policy"
+  | "connections"
+  | "system"
+  | "evidence";
 
 interface Item {
   id: ViewId;
@@ -65,6 +80,12 @@ export const VIEWS: Item[] = [
     icon: Plug,
   },
   { id: "system", label: "System", hint: "The machinery, read live", icon: Network },
+  {
+    id: "evidence",
+    label: "Evidence",
+    hint: "How this compares to a baseline, measured",
+    icon: FlaskConical,
+  },
 ];
 
 interface Props {

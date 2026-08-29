@@ -1,0 +1,305 @@
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 22px 32px;
+  background-color: var(--surface);
+}
+
+/* ----------------------------------------------------------------- empty */
+
+.empty {
+  max-width: 520px;
+  margin: 56px auto;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.emptyIcon {
+  color: var(--text-faint);
+  margin-bottom: 14px;
+}
+
+.empty h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.62;
+}
+
+.emptyMethod {
+  color: var(--text-faint);
+}
+
+.command,
+.commandInline {
+  display: inline-block;
+  padding: 7px 11px;
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--accent);
+  background-color: var(--bg-chrome);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* ---------------------------------------------------------------- header */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.commandInline {
+  margin-top: 0;
+}
+
+/* ------------------------------------------------------------------ arms */
+
+.arms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.arm {
+  padding: 15px 16px;
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Cascade is the claim under test, not the default answer. Marked so the
+   reader knows which column is the one making a promise. */
+.armPrimary {
+  border-color: var(--accent-dim);
+}
+
+.armName {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+.armScore {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.armPct {
+  font-size: 17px;
+  color: var(--text-faint);
+  margin-left: 2px;
+}
+
+.armScoreLabel {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.armUnsafe {
+  margin-top: 11px;
+  font-size: 12px;
+  color: var(--st-active);
+}
+
+.armUnsafeBad {
+  color: var(--st-invalid);
+  font-weight: 600;
+}
+
+.armMeta {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.armNote {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* ---------------------------------------------------------------- phases */
+
+.sectionTitle {
+  margin: 0 0 11px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.phases,
+.cases,
+.notes {
+  margin-bottom: 26px;
+}
+
+.phaseTable,
+.caseTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.phaseTable th,
+.phaseTable td,
+.caseTable th,
+.caseTable td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.phaseTable thead th,
+.caseTable thead th {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.phaseLabel {
+  font-weight: 500;
+}
+
+.phaseNum {
+  display: block;
+  color: var(--text);
+}
+
+.phaseWhat {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+.cellPct {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellGood {
+  color: var(--st-active);
+}
+
+.cellBad {
+  color: var(--st-suspect);
+}
+
+.cellUnsafe {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--st-invalid);
+}
+
+/* ----------------------------------------------------------------- cases */
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.dim {
+  color: var(--text-faint);
+}
+
+.tagOk,
+.tagWrong,
+.tagUnsafe {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.tagOk {
+  color: var(--st-active);
+  border: 1px solid #1E3A24;
+  background-color: #101A13;
+}
+
+/* Wrong, but wrong in the safe direction: escalating something policy would
+   have permitted costs a human five minutes. */
+.tagWrong {
+  color: var(--st-suspect);
+  border: 1px solid var(--st-suspect);
+  background-color: #1F1B14;
+}
+
+/* Acted where policy forbids it. The only error on this page that could hurt
+   somebody, and coloured accordingly. */
+.tagUnsafe {
+  color: var(--st-invalid);
+  border: 1px solid var(--st-invalid);
+  background-color: #2A1315;
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------- notes */
+
+.notes ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.notes li {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.fairness {
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}

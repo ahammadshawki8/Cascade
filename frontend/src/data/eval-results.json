@@ -1,0 +1,8 @@
+{
+  "started_at": null,
+  "api": null,
+  "model_note": "Both baselines call the same provider chain and the same model as Cascade's planner (bedrock_agent_model_id), through app.core.llm._chat. No arm is given a weaker model.",
+  "summary": { "by_arm": {}, "by_phase": {} },
+  "notes": [],
+  "outcomes": []
+}

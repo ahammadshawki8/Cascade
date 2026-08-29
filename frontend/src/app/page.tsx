@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import styles from "./page.module.css";
 import { ActivityBar, ViewId, VIEWS } from "../components/ActivityBar";
+import { EvidencePanel } from "../components/EvidencePanel";
 import { StatusBar } from "../components/StatusBar";
 import { CommandPalette, Command } from "../components/CommandPalette";
 import { MetricBar } from "../components/MetricBar";
@@ -1613,6 +1614,12 @@ export default function CascadeApp() {
                   ) : (
                     <IntelligencePanel apiBase={API_BASE} refreshKey={refreshKey} />
                   )}
+                </div>
+              )}
+
+              {view === "evidence" && (
+                <div className={styles.full}>
+                  <EvidencePanel />
                 </div>
               )}
             </div>
