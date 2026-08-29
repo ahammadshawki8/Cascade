@@ -588,13 +588,21 @@ docker start cascade-crdb     # or: docker run -d --name cascade-crdb \
                               #   -p 26257:26257 -p 8080:8080 \
                               #   cockroachdb/cockroach:latest start-single-node --insecure
 
-# 2. Migrations (all four, in order)
-for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail; do
+# 2. Migrations — six of them, and NOT in numeric order.
+#
+#    006 adds `predicate` and `enforcement` to `rules`, and 002 inserts into
+#    those columns. So the seed runs last. Applying 001, 002, 003 ... fails
+#    outright on 002 with an undefined column, which is what this block used
+#    to tell you to do.
+#
+#        001 -> 003 -> 004 -> 005 -> 006 -> 002
+#
+for f in 001_schema 002_seed 003_extensions 004_production 005_step_detail 006_platform; do
   docker cp backend/migrations/$f*.sql cascade-crdb:/tmp/$f.sql
 done
 docker exec cascade-crdb ./cockroach sql --insecure \
   -e "DROP DATABASE IF EXISTS cascade CASCADE; CREATE DATABASE cascade;"
-for f in 001 002 003 004 005; do
+for f in 001 003 004 005 006 002; do
   docker exec cascade-crdb ./cockroach sql --insecure --database=cascade --file=//tmp/$f.sql
 done
 
