@@ -70,18 +70,52 @@ class Case:
 
     @property
     def is_boundary(self) -> bool:
-        """INC-1010 deploys at exactly the window edge.
+        """INC-1010 sits just past the window edge, by minutes.
 
-        The brief asks for one challenging case. This is it: at exactly 24.0
-        hours a `lte` comparison passes and a `lt` comparison fails, so it
-        separates an arm that evaluates the rule from one that has absorbed the
-        general idea that "24 hours is the limit".
+        The brief asks for one challenging case. This is it, though not quite in
+        the way the seed intends: `002_seed.sql` writes the deploy at exactly 24
+        hours ago, and the value drifts the moment it is written, so by the time
+        anything reads it the age is 24.2 or 24.3 against a 24 hour window.
+
+        That is a better test than a clean tie would have been. An arm holding
+        the rule as a number computes 24.3 > 24 and refuses. An arm that has
+        absorbed "roll back within about a day" sees a deploy from yesterday and
+        approves. The gap between those two readings is a few minutes wide, and
+        it is exactly the gap where a system that only looks like it applies
+        policy comes apart.
         """
         return self.incident_id == "INC-1010"
 
 
 def natural_action(kind: str) -> str | None:
     return ACTION_FOR_KIND.get(kind)
+
+
+def incident_facts(
+    incident: dict[str, Any], action: str, prior_actions: int = 0
+) -> dict[str, Any]:
+    """Facts for one incident, from either shape it can arrive in.
+
+    `build_incident_facts` derives `deploy_age_hours` by subtracting a
+    `deploy_timestamp`, because that is what a database row carries. The
+    incident *API* does that subtraction in SQL and returns only the result, so
+    the raw timestamp is absent from the response entirely.
+
+    Feeding an API response straight in therefore yields `deploy_age_hours =
+    None`, which is UNKNOWN rather than False, so `rollback_window` reports
+    "no deploy timestamp - rollback window unverifiable" for every bad deploy
+    that plainly has one. That failure is quiet and it is fatal to this
+    experiment: every bad deploy escalates under both policies, so tightening
+    the window changes no answer and the measured difference is zero for a
+    reason that has nothing to do with the system under test.
+
+    So take the derived value when it is already there, and only fall back to
+    deriving it.
+    """
+    facts = build_incident_facts(incident, action=action, prior_actions=prior_actions)
+    if facts.get("deploy_age_hours") is None and incident.get("deploy_age_hours") is not None:
+        facts["deploy_age_hours"] = float(incident["deploy_age_hours"])
+    return facts
 
 
 def ground_truth(
@@ -105,7 +139,7 @@ def ground_truth(
     if action is None:
         return ESCALATE, [f"no remediation defined for kind {incident.get('kind')!r}"]
 
-    facts = build_incident_facts(incident, action=action, prior_actions=prior_actions)
+    facts = incident_facts(incident, action, prior_actions)
     reasons: list[str] = []
 
     for rule in rules:
@@ -148,7 +182,7 @@ def build_cases(
                 incident_id=inc["incident_id"],
                 kind=kind,
                 action=action,
-                facts=build_incident_facts(inc, action=action),
+                facts=incident_facts(inc, action),
                 expected=expected,
                 reasons=reasons,
             )
