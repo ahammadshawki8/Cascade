@@ -7,6 +7,56 @@
   background-color: var(--surface);
 }
 
+/* The sample world has aged past the point where it can demonstrate anything.
+   Amber rather than red, matching the refusal colour used everywhere else:
+   nothing has failed, the data has simply gone out of date. */
+.agedBanner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--st-suspect);
+  background-color: #1F1B14;
+}
+
+.agedText {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.agedText strong {
+  color: var(--st-suspect);
+  font-weight: 600;
+}
+
+.agedAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 11px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--st-suspect);
+  background-color: transparent;
+  border: 1px solid var(--st-suspect);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.agedAction:hover:not(:disabled) {
+  background-color: #2A2318;
+}
+
+.agedAction:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .policyBar {
   display: flex;
   flex-wrap: wrap;

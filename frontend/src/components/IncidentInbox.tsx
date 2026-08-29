@@ -56,6 +56,7 @@ export function IncidentInbox({
   locked = false,
   only = null,
   onRun,
+  onReset,
 }: {
   apiBase: string;
   refreshKey: number;
@@ -68,6 +69,12 @@ export function IncidentInbox({
    */
   only?: string[] | null;
   onRun: (input: string) => void;
+  /**
+   * Restore the sample world. Offered here because this is where the aging
+   * described below actually shows up, and telling someone their demo is
+   * broken without giving them the fix in the same breath is not much help.
+   */
+  onReset?: () => void;
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [policy, setPolicy] = useState<Policy | null>(null);
@@ -98,8 +105,56 @@ export function IncidentInbox({
     .filter((i) => i.state !== "resolved")
     .filter((i) => only === null || only.includes(i.incident_id));
 
+  /**
+   * The sample world ages, and past a point it stops being able to tell its
+   * own story.
+   *
+   * `002_seed.sql` writes deploy timestamps as `NOW() - INTERVAL '2 hours'`.
+   * That is absolute: it was two hours ago when the seed ran, and it is two
+   * hours plus however long the database has been sitting there ever since.
+   * After a few days every bad deploy is outside the rollback window, so the
+   * cold run escalates instead of remediating, no runbook is ever compiled,
+   * and the learn -> reuse -> refuse sequence cannot start. Nothing is broken,
+   * and nothing says so either — the incidents look normal and simply all
+   * refuse.
+   *
+   * Detected by asking whether *any* rollback is still possible rather than by
+   * comparing against a fixed number of hours, so tightening the window during
+   * the demo (24h -> 4h, which is the whole point of the walkthrough) does not
+   * trip it: INC-1001 at two hours stays inside a four hour window.
+   */
+  const badDeploys = incidents.filter(
+    (i) => i.kind === "bad_deploy" && i.state !== "resolved"
+  );
+  const worldAged =
+    !loading &&
+    badDeploys.length > 0 &&
+    badDeploys.every((i) => i.within_window === false);
+
   return (
     <div className={styles.inbox}>
+      {worldAged && (
+        <div className={styles.agedBanner}>
+          <div className={styles.agedText}>
+            <strong>This sample world has aged.</strong> Every bad deploy here is
+            now older than the {policy?.rollback_window_hours ?? 24}h rollback
+            window, so all of them refuse and nothing can be learned. Restore the
+            sample to bring the deploys back to minutes old.
+          </div>
+          {onReset && (
+            <button
+              type="button"
+              className={styles.agedAction}
+              onClick={onReset}
+              disabled={locked}
+            >
+              <RotateCw size={13} />
+              Restore the sample
+            </button>
+          )}
+        </div>
+      )}
+
       {policy && (
         <div className={styles.policyBar}>
           <span className={styles.policyTitle}>Policy in force</span>

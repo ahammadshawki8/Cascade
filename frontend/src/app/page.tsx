@@ -1461,6 +1461,7 @@ export default function CascadeApp() {
                           locked={locked}
                           only={tourReveal}
                           onRun={(input) => void handleTaskSubmit(input)}
+                          onReset={() => void handleResetDemo()}
                         />
                       </div>
                     )}
