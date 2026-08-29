@@ -92,6 +92,8 @@ export function RunProgress({
   openSignal = 0,
   hostCollapsed = false,
   reviewing = false,
+  replaying = false,
+  onRunLive,
   onOpenPolicy,
   onDismiss,
 }: {
@@ -103,6 +105,17 @@ export function RunProgress({
   mode?: "explore" | "guided";
   /** The verdict, once the run has one. Drives the evidence and the cost line. */
   explanation?: Explanation | null;
+  /**
+   * This is a recording, not a live run.
+   *
+   * Marked for the whole of playback rather than mentioned once. A demo that
+   * replays captured data and does not continuously say so is indistinguishable
+   * from one that fakes its results, and the difference is the only thing that
+   * makes the numbers worth anything.
+   */
+  replaying?: boolean;
+  /** Run the same incident against the cluster instead. */
+  onRunLive?: () => void;
   /** Set while a runbook is being re-learned; replaces the run body entirely. */
   relearn?: RelearnState | null;
   /** A one-off event worth interrupting for. Expands, then settles back. */
@@ -220,7 +233,17 @@ export function RunProgress({
         <span className={styles.title}>{title}</span>
         <span className={styles.stage}>{stage}</span>
         {reviewing && !relearn && <span className={styles.pastTag}>from history</span>}
+        {replaying && <span className={styles.recTag}>recording</span>}
         <span className={styles.spacer} />
+        {replaying && onRunLive && (
+          <button
+            className={styles.liveBtn}
+            onClick={onRunLive}
+            title="Run this incident against the cluster instead"
+          >
+            Run it live
+          </button>
+        )}
         <button
           className={styles.iconBtn}
           onClick={() => setExpanded(false)}

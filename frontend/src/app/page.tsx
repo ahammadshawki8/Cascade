@@ -22,6 +22,7 @@ import { IncidentComposer } from "../components/IncidentComposer";
 import type { Explanation, RelearnState, StepEvent } from "../components/runTypes";
 import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { Landing, landingSeen, resetLanding } from "../components/Landing";
+import recordedRuns from "../data/recorded-runs.json";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
@@ -170,6 +171,8 @@ export default function CascadeApp() {
   const [connected, setConnected] = useState(false);
 
   const [consoleRunning, setConsoleRunning] = useState(false);
+  /** True while the island is showing a recording rather than a live run. */
+  const [replaying, setReplaying] = useState(false);
   const [consoleMode, setConsoleMode] = useState<"explore" | "guided" | undefined>();
   const [activePlaybookName, setActivePlaybookName] = useState("");
   const [activePlaybookVersion, setActivePlaybookVersion] = useState(0);
@@ -844,6 +847,80 @@ export default function CascadeApp() {
     [detachTaskListeners, refreshAll, announceDecision]
   );
 
+  /**
+   * Replay a recorded run instead of making one.
+   *
+   * A cold run is a real Bedrock call and takes thirteen seconds; the compile
+   * behind it takes another twenty-five. That is honest and it is the right
+   * behaviour for the product, and it is the wrong behaviour for the first two
+   * minutes of someone's attention. Three real runs were captured against the
+   * deployed stack with `backend/eval` and are replayed here at a pace a person
+   * can watch.
+   *
+   * It is a recording and it says so: the island carries a marker for the whole
+   * of playback, and every walkthrough step keeps a control that runs the same
+   * incident live against the cluster. Nothing here is invented — the steps,
+   * the tool outputs, the durations and the token counts are what actually
+   * happened, on the date in the fixture.
+   */
+  const playRecorded = useCallback(
+    async (which: "explore" | "guided" | "refused", incidentId: string) => {
+      const run = (recordedRuns as any)[which];
+      if (!run) return;
+
+      setView("work");
+      setWorkTab("inbox");
+      clearIsland();
+      setRelearn(null);
+      setReviewing(false);
+      setActiveIncident(incidentId);
+      setReplaying(true);
+      setConsoleRunning(true);
+      setConsoleMode(run.mode);
+      fireTour("run:started");
+
+      // Paced, not instant. A list that appears fully formed reads as a static
+      // screenshot; watching the steps arrive is most of what makes the two
+      // lanes legible.
+      const beat = 420;
+      for (let i = 0; i < run.steps.length; i++) {
+        await new Promise((r) => setTimeout(r, beat));
+        const st = run.steps[i];
+        setConsoleSteps((prev) => [
+          ...prev,
+          {
+            id: `${which}-${st.id}`,
+            tool: st.tool,
+            args: st.args ?? {},
+            output: st.output,
+            duration_ms: st.duration_ms,
+          },
+        ]);
+      }
+
+      await new Promise((r) => setTimeout(r, 500));
+      setConsoleRunning(false);
+      setReplaying(false);
+
+      if (which === "explore") {
+        setCompiling(true);
+        await new Promise((r) => setTimeout(r, 900));
+        setCompiling(false);
+        fireTour("runbook:compiled");
+        fireTour("compile:settled");
+      } else if (which === "guided") {
+        fireTour("run:reused");
+        fireTour("run:finished");
+      } else {
+        fireTour("run:refused");
+        fireTour("run:finished");
+      }
+      refreshAll();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clearIsland, fireTour]
+  );
+
   const handleTaskSubmit = useCallback(
     async (input: string): Promise<string | null> => {
       setView("work");
@@ -881,6 +958,35 @@ export default function CascadeApp() {
       }
     },
     [attachTaskListeners, clearIsland, fireTour]
+  );
+
+  /**
+   * One entry point for "run this incident", which decides how.
+   *
+   * Inside the walkthrough the three incidents the tour drives are replayed
+   * from the recording, because thirteen seconds of waiting is where attention
+   * goes to die. Everywhere else — the inbox outside the tour, the command
+   * palette, an incident you wrote yourself — goes to the cluster, because that
+   * is the product.
+   *
+   * `forceLive` is the escape hatch the island offers during playback, so a
+   * reviewer who suspects the recording can settle it in one click.
+   */
+  const runIncident = useCallback(
+    (input: string, forceLive = false): void => {
+      const id = (input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase();
+      const recorded: Record<string, "explore" | "guided" | "refused"> = {
+        "INC-1001": "explore",
+        "INC-1002": "guided",
+        "INC-1009": "refused",
+      };
+      if (!forceLive && tourStep !== null && id && recorded[id]) {
+        void playRecorded(recorded[id], id);
+        return;
+      }
+      void handleTaskSubmit(input);
+    },
+    [tourStep, playRecorded, handleTaskSubmit]
   );
 
   /**
@@ -1640,7 +1746,7 @@ export default function CascadeApp() {
                           runningId={consoleRunning ? activeIncident : null}
                           locked={locked}
                           only={tourReveal}
-                          onRun={(input) => void handleTaskSubmit(input)}
+                          onRun={(input) => runIncident(input)}
                           onReset={() => void handleResetDemo()}
                           onlyMine={shellMode === "work"}
                         />
@@ -1874,6 +1980,12 @@ export default function CascadeApp() {
           compiling={compiling}
           openSignal={islandOpen}
           hostCollapsed={tourStep !== null && !tourTargetsIsland}
+          replaying={replaying}
+          onRunLive={
+            activeIncident
+              ? () => runIncident(`Remediate ${activeIncident}`, true)
+              : undefined
+          }
           reviewing={reviewing}
           onOpenPolicy={(key) => {
             setHighlightRule(key);

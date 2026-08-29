@@ -81,7 +81,7 @@ export const TOUR: TourStep[] = [
     body:
       "This walks through one loop: the agent solves an incident it has never seen, writes down what it did, reuses it, and then throws that knowledge away the moment the rules change underneath it.\n\nOne incident appears at a time, so there is never a wrong thing to click. You can leave at any point and the full world comes back.",
     mechanism:
-      "Everything you are about to see runs against a real CockroachDB cluster. No step is scripted; if the model does something different, you will see that instead.",
+      "The three runs below are replayed from recordings of real runs against the deployed stack, so you are not waiting thirteen seconds on a model call to see what happens next. They are marked as recordings while they play, and every one of them has a Run it live button that goes to the cluster instead. Everything else here — the policy change, the invalidation, the counts — happens for real as you do it.",
     nextLabel: "Start",
   },
 
@@ -91,7 +91,7 @@ export const TOUR: TourStep[] = [
     body:
       "A bad deploy took out checkout. The agent has never seen this, so it has nothing to fall back on and has to reason from policy: read the incident, read the rules, check whether it is allowed to act, then act.\n\nPress <b>Fix it</b> and watch the floating window.",
     mechanism:
-      "This is the expensive path. Every step costs a call to the planner, which is exactly what the rest of the system exists to avoid paying twice.",
+      "This is the expensive path: every step costs a call to the planner, which is exactly what the rest of the system exists to avoid paying twice. The run you are about to watch took 12,962 ms and 8,579 planner tokens when it was recorded. Press Run it live to spend that again now.",
     target: '[data-tour="incident-INC-1001"]',
     view: "work",
     reveal: ["INC-1001"],
