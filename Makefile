@@ -35,9 +35,19 @@ db:
 	@# single node. Harmless no-op on CockroachDB Cloud (spec §2).
 	-$(CRDB) -e "SET CLUSTER SETTING feature.vector_index.enabled = true;" 2>/dev/null || true
 
+# All of them, in order. This used to apply 001 only, which left a database
+# that looks fine and then fails in ways that read as application bugs: no
+# anti_playbooks table (003), no TTL or RBAC index (004), no trajectory column
+# so every past run shows a step count and no steps (005), and no predicate or
+# enforcement columns, which means policy is stored and versioned and enforced
+# by nothing at all (006).
 migrate:
 	$(CRDB) --database=cascade -f migrations/001_schema.sql
-	@echo "schema applied"
+	$(CRDB) --database=cascade -f migrations/003_extensions.sql
+	$(CRDB) --database=cascade -f migrations/004_production.sql
+	$(CRDB) --database=cascade -f migrations/005_step_detail.sql
+	$(CRDB) --database=cascade -f migrations/006_platform.sql
+	@echo "schema applied — migrations 001, 003, 004, 005, 006"
 
 seed:
 	$(CRDB) --database=cascade -f migrations/002_seed.sql
