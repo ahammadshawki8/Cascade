@@ -926,6 +926,33 @@ export default function CascadeApp() {
       setConsoleMode(run.mode);
       fireTour("run:started");
 
+      /**
+       * Start the real run underneath, on the click, and never wait for it.
+       *
+       * The steps after this read real state — a runbook card with provenance,
+       * dots that grey out, something for Re-learn to act on — and a recording
+       * produces none of it.
+       *
+       * It has to be here rather than when the walkthrough opens. Pre-warming
+       * ran INC-1001 before the viewer had clicked anything, so by the time the
+       * tour asked them to fix it, it was already mitigated and there was
+       * nothing to press. Firing on the click means the incident is consumed by
+       * the person the tour is talking to, which is also just what they think
+       * is happening.
+       *
+       * The recording lands in about two seconds, so the information arrives
+       * immediately and only the state has to catch up.
+       */
+      if (which === "explore") {
+        void fetch(`${API_BASE}/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input: `Remediate ${incidentId}` }),
+        }).catch(() => {
+          /* the tour degrades to playback rather than failing outright */
+        });
+      }
+
       // Paced, not instant. A list that appears fully formed reads as a static
       // screenshot; watching the steps arrive is most of what makes the two
       // lanes legible.
@@ -1186,26 +1213,6 @@ export default function CascadeApp() {
     goToStep(0);
     try {
       await handleResetDemo();
-      /**
-       * Start the real cold run now, in the background, and never wait for it.
-       *
-       * The walkthrough replays recordings so nobody watches a spinner, but the
-       * steps after it need state that only a real run produces: a runbook to
-       * look at, provenance edges to turn grey, and something for Re-learn to
-       * act on. Playback alone left those screens empty and the tour waiting on
-       * an event that could not fire.
-       *
-       * Kicking it off here buys the thirty-odd seconds it needs against the
-       * time a viewer spends reading the opening two cards, so by the time the
-       * recording has played the real runbook is usually already there.
-       */
-      void fetch(`${API_BASE}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: "Remediate INC-1001" }),
-      }).catch(() => {
-        /* The tour degrades to playback-only rather than failing outright. */
-      });
     } finally {
       setTourPreparing(false);
     }

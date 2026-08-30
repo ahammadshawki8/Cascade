@@ -160,7 +160,9 @@ export function Landing({
         <p className={styles.footnote}>
           No account and no login: everything a reviewer needs to do here is a
           write, so the demo is deliberately open. It runs against a live
-          CockroachDB cluster on Amazon Bedrock, and nothing is scripted.
+          CockroachDB cluster on Amazon Bedrock. The walkthrough replays three
+          recorded runs so you are not waiting on model calls; they are marked
+          as recordings and each one can be re-run live in a click.
         </p>
       </div>
     </div>

@@ -87,9 +87,9 @@ export interface TourStep {
 export const TOUR: TourStep[] = [
   {
     id: "welcome",
-    title: "Six minutes, and you will have seen the whole idea",
+    title: "Two parts: the idea, then the tool",
     body:
-      "This walks through one loop: the agent solves an incident it has never seen, writes down what it did, reuses it, and then throws that knowledge away the moment the rules change underneath it.\n\nOne incident appears at a time, so there is never a wrong thing to click. You can leave at any point and the full world comes back.",
+      "The first half is one loop, and takes a few minutes: the agent solves an incident it has never seen, writes down what it did, reuses it, and then throws that knowledge away the moment the rules change underneath it. That is the whole idea, and you can stop there.\n\nThe second half walks every screen and says what it is for. One incident appears at a time, so there is never a wrong thing to click, and Skip works on every step.",
     mechanism:
       "The three runs below are replayed from recordings of real runs against the deployed stack, so you are not waiting thirteen seconds on a model call to see what happens next. They are marked as recordings while they play, and every one of them has a Run it live button that goes to the cluster instead. Everything else here — the policy change, the invalidation, the counts — happens for real as you do it.",
     nextLabel: "Start",
