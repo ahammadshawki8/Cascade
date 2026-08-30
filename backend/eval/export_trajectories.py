@@ -102,7 +102,10 @@ def classify(task: dict[str, Any], explain: dict[str, Any]) -> str:
     """
     if task.get("status") == "awaiting_approval":
         return "gated"
-    reason = str(explain.get("reason") or "")
+    # The verdict is nested under `decision`, not at the top level. Reading it
+    # from the root returned None for every run, so a refusal was filed as an
+    # ordinary explore and the one behaviour worth exporting never appeared.
+    reason = str((explain.get("decision") or {}).get("reason") or "")
     if reason in {"refused_stale", "refused_precondition"}:
         return reason
     if task.get("mode") == "guided":
@@ -156,7 +159,8 @@ def render(
         add(json.dumps(entry.get("output"), indent=2, default=str))
         add("```")
 
-    refusal = explain.get("refusal")
+    decision = explain.get("decision") or {}
+    refusal = decision.get("stale_deps") or decision.get("failed_preconditions")
     if refusal:
         add("\n### Why it was refused\n")
         add("```json")
