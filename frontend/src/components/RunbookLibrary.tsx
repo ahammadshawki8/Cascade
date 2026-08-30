@@ -121,7 +121,7 @@ export function RunbookLibrary({
 
   return (
     <div className={styles.library}>
-      <div className={styles.header}>
+      <div className={styles.header} data-tour="runbook-library">
         <span className={styles.title}>Runbook Library</span>
         <span className={styles.title}>{playbooks.length} entries</span>
       </div>

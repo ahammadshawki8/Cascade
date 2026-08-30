@@ -29,7 +29,6 @@ import { IncidentComposer } from "../components/IncidentComposer";
 import type { Explanation, RelearnState, StepEvent } from "../components/runTypes";
 import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { Landing, landingSeen, resetLanding } from "../components/Landing";
-import recordedRuns from "../data/recorded-runs.json";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
 import { IncidentInbox } from "../components/IncidentInbox";
@@ -186,8 +185,6 @@ export default function CascadeApp() {
   const [connected, setConnected] = useState(false);
 
   const [consoleRunning, setConsoleRunning] = useState(false);
-  /** True while the island is showing a recording rather than a live run. */
-  const [replaying, setReplaying] = useState(false);
   const [consoleMode, setConsoleMode] = useState<"explore" | "guided" | undefined>();
   const [activePlaybookName, setActivePlaybookName] = useState("");
   const [activePlaybookVersion, setActivePlaybookVersion] = useState(0);
@@ -904,131 +901,6 @@ export default function CascadeApp() {
     [detachTaskListeners, refreshAll, announceDecision]
   );
 
-  /**
-   * Replay a recorded run instead of making one.
-   *
-   * A cold run is a real Bedrock call and takes thirteen seconds; the compile
-   * behind it takes another twenty-five. That is honest and it is the right
-   * behaviour for the product, and it is the wrong behaviour for the first two
-   * minutes of someone's attention. Three real runs were captured against the
-   * deployed stack with `backend/eval` and are replayed here at a pace a person
-   * can watch.
-   *
-   * It is a recording and it says so: the island carries a marker for the whole
-   * of playback, and every walkthrough step keeps a control that runs the same
-   * incident live against the cluster. Nothing here is invented — the steps,
-   * the tool outputs, the durations and the token counts are what actually
-   * happened, on the date in the fixture.
-   */
-  const playRecorded = useCallback(
-    async (which: "explore" | "guided" | "refused", incidentId: string) => {
-      const run = (recordedRuns as any)[which];
-      if (!run) return;
-
-      setView("work");
-      setWorkTab("inbox");
-      clearIsland();
-      setRelearn(null);
-      setReviewing(false);
-      setActiveIncident(incidentId);
-      setReplaying(true);
-      setConsoleRunning(true);
-      setConsoleMode(run.mode);
-      fireTour("run:started");
-
-      /**
-       * Start the real run underneath, on the click, and never wait for it.
-       *
-       * The steps after this read real state — a runbook card with provenance,
-       * dots that grey out, something for Re-learn to act on — and a recording
-       * produces none of it.
-       *
-       * It has to be here rather than when the walkthrough opens. Pre-warming
-       * ran INC-1001 before the viewer had clicked anything, so by the time the
-       * tour asked them to fix it, it was already mitigated and there was
-       * nothing to press. Firing on the click means the incident is consumed by
-       * the person the tour is talking to, which is also just what they think
-       * is happening.
-       *
-       * The recording lands in about two seconds, so the information arrives
-       * immediately and only the state has to catch up.
-       */
-      if (which === "explore") {
-        void fetch(`${API_BASE}/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input: `Remediate ${incidentId}` }),
-        }).catch(() => {
-          /* the tour degrades to playback rather than failing outright */
-        });
-      }
-
-      // Paced, not instant. A list that appears fully formed reads as a static
-      // screenshot; watching the steps arrive is most of what makes the two
-      // lanes legible.
-      const beat = 420;
-      for (let i = 0; i < run.steps.length; i++) {
-        await new Promise((r) => setTimeout(r, beat));
-        const st = run.steps[i];
-        setConsoleSteps((prev) => [
-          ...prev,
-          {
-            id: `${which}-${st.id}`,
-            tool: st.tool,
-            args: st.args ?? {},
-            output: st.output,
-            duration_ms: st.duration_ms,
-          },
-        ]);
-      }
-
-      await new Promise((r) => setTimeout(r, 500));
-      setConsoleRunning(false);
-      setReplaying(false);
-
-      if (which === "explore") {
-        /**
-         * Hold until the real runbook exists, not for a decorative moment.
-         *
-         * Everything after this step reads real state: the card with its
-         * provenance, the dots that grey out when the rule moves, the Re-learn
-         * control. Firing `compiled` on a timer let the tour run ahead of the
-         * cluster and land on screens that were still empty.
-         *
-         * The pre-warm at tour start means this has usually already happened
-         * and the wait is nothing. When it has not, the step says what it is
-         * waiting for rather than looking stalled. `compile:settled` fires
-         * either way, because a compile can legitimately produce no runbook and
-         * the tour must not hang on that.
-         */
-        setCompiling(true);
-        const deadline = Date.now() + 90_000;
-        let landed = false;
-        while (Date.now() < deadline && !landed) {
-          try {
-            const res = await fetch(`${API_BASE}/playbooks`);
-            if (res.ok) landed = ((await res.json())?.count ?? 0) > 0;
-          } catch {
-            /* keep waiting; the deadline is the escape */
-          }
-          if (!landed) await new Promise((r) => setTimeout(r, 2000));
-        }
-        setCompiling(false);
-        if (landed) fireTour("runbook:compiled");
-        fireTour("compile:settled");
-      } else if (which === "guided") {
-        fireTour("run:reused");
-        fireTour("run:finished");
-      } else {
-        fireTour("run:refused");
-        fireTour("run:finished");
-      }
-      refreshAll();
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [clearIsland, fireTour]
-  );
-
   const handleTaskSubmit = useCallback(
     async (input: string): Promise<string | null> => {
       setView("work");
@@ -1066,35 +938,6 @@ export default function CascadeApp() {
       }
     },
     [attachTaskListeners, clearIsland, fireTour]
-  );
-
-  /**
-   * One entry point for "run this incident", which decides how.
-   *
-   * Inside the walkthrough the three incidents the tour drives are replayed
-   * from the recording, because thirteen seconds of waiting is where attention
-   * goes to die. Everywhere else — the inbox outside the tour, the command
-   * palette, an incident you wrote yourself — goes to the cluster, because that
-   * is the product.
-   *
-   * `forceLive` is the escape hatch the island offers during playback, so a
-   * reviewer who suspects the recording can settle it in one click.
-   */
-  const runIncident = useCallback(
-    (input: string, forceLive = false): void => {
-      const id = (input.match(/INC-\d+/i) ?? [])[0]?.toUpperCase();
-      const recorded: Record<string, "explore" | "guided" | "refused"> = {
-        "INC-1001": "explore",
-        "INC-1002": "guided",
-        "INC-1009": "refused",
-      };
-      if (!forceLive && tourStep !== null && id && recorded[id]) {
-        void playRecorded(recorded[id], id);
-        return;
-      }
-      void handleTaskSubmit(input);
-    },
-    [tourStep, playRecorded, handleTaskSubmit]
   );
 
   /**
@@ -1821,7 +1664,7 @@ export default function CascadeApp() {
             ))}
         </header>
 
-        <div className={styles.metrics}>
+        <div className={styles.metrics} data-tour="metrics">
           <MetricBar data={metrics} />
         </div>
 
@@ -1831,7 +1674,7 @@ export default function CascadeApp() {
               {view === "work" && (
                 <div className={styles.split}>
                   <div className={styles.pane}>
-                    <div className={styles.tabs} role="tablist">
+                    <div className={styles.tabs} role="tablist" data-tour="work-tabs">
                       {(
                         [
                           ["inbox", "Inbox", "open incidents waiting to be fixed"],
@@ -1862,7 +1705,7 @@ export default function CascadeApp() {
                           runningId={consoleRunning ? activeIncident : null}
                           locked={locked}
                           only={tourReveal}
-                          onRun={(input) => runIncident(input)}
+                          onRun={(input) => void handleTaskSubmit(input)}
                           onReset={() => void handleResetDemo()}
                           onlyMine={shellMode === "work"}
                         />
@@ -2093,12 +1936,6 @@ export default function CascadeApp() {
           compiling={compiling}
           openSignal={islandOpen}
           hostCollapsed={tourStep !== null && !tourTargetsIsland}
-          replaying={replaying}
-          onRunLive={
-            activeIncident
-              ? () => runIncident(`Remediate ${activeIncident}`, true)
-              : undefined
-          }
           reviewing={reviewing}
           onOpenPolicy={(key) => {
             setHighlightRule(key);
