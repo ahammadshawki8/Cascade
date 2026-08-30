@@ -15,6 +15,8 @@
 
 /* The mark carries the identity on its own — a gradient tile around a letter
    was doing the work the logo should be doing. */
+/* A button now, so the browser chrome has to come off: it is the way back to
+   the opening screen, not a decoration. */
 .brand {
   width: 30px;
   height: 30px;
@@ -24,6 +26,16 @@
   margin-bottom: 10px;
   flex-shrink: 0;
   color: var(--accent);
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.brand:hover {
+  opacity: 0.78;
 }
 
 .group {

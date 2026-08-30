@@ -1711,6 +1711,10 @@ export default function CascadeApp() {
       <ActivityBar
         active={view}
         mode={shellMode}
+        onBrand={() => {
+          resetLanding();
+          setLanding(true);
+        }}
         onSelect={setView}
         badges={{ system: insights.length }}
         dockBadge={approvals.length}

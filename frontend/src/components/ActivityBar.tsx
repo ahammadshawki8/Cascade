@@ -129,6 +129,8 @@ export function viewsFor(mode: ShellMode): Item[] {
 interface Props {
   active: ViewId;
   mode: ShellMode;
+  /** Back to the opening screen. The wordmark is the way home. */
+  onBrand: () => void;
   onSelect: (id: ViewId) => void;
   badges?: Partial<Record<ViewId, number>>;
   dockBadge?: number;
@@ -140,6 +142,7 @@ interface Props {
 export function ActivityBar({
   active,
   mode,
+  onBrand,
   onSelect,
   badges = {},
   dockBadge = 0,
@@ -175,10 +178,21 @@ export function ActivityBar({
       className={`${styles.bar} ${expanded ? styles.barWide : ""}`}
       aria-label="Primary"
     >
-      <div className={styles.brand} title="Cascade">
+      {/* The wordmark goes home, which is what a wordmark in the top left is
+          for. The opening screen was otherwise a one-way door: it is gated on a
+          localStorage flag, so once a visitor had chosen a walkthrough or work
+          mode there was no way back to it, and a hard refresh did not help
+          because the flag survives one. */}
+      <button
+        type="button"
+        className={styles.brand}
+        onClick={onBrand}
+        title="Back to the opening screen"
+        aria-label="Back to the opening screen"
+      >
         <Logo size={22} />
         {expanded && <span className={styles.wordmark}>Cascade</span>}
-      </div>
+      </button>
 
       <div className={styles.group}>
         {viewsFor(mode).map((item) => {
