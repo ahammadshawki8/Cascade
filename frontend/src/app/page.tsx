@@ -772,10 +772,27 @@ export default function CascadeApp() {
       const data = await res.json();
       setExplanation(data);
 
-      // A cold run that worked is about to become a runbook, but compilation
-      // happens in a worker and lands seconds later. Say so, and stop saying it
-      // the moment the runbook actually appears.
-      if (data?.mode === "explore" && data?.status === "succeeded") {
+      /**
+       * A cold run that *remediated* is about to become a runbook, but
+       * compilation happens in a worker and lands seconds later. Say so, and
+       * stop saying it the moment the runbook actually appears.
+       *
+       * `result === "remediated"` matters and used to be missing. An escalation
+       * is also `status: "succeeded"` — the task ran fine, policy simply said
+       * no — but the executor deliberately never compiles one, because policy
+       * working is not knowledge gained. So a refusal entered this loop and
+       * waited the full two minutes for a runbook that was never coming, and
+       * `run:finished` fires *after* the loop, which left the walkthrough step
+       * watching the refusal apparently frozen for two minutes.
+       *
+       * The condition now mirrors the executor's own compile gate exactly:
+       * explore, and remediated.
+       */
+      if (
+        data?.mode === "explore" &&
+        data?.status === "succeeded" &&
+        data?.result === "remediated"
+      ) {
         setCompiling(true);
         const before = playbookCountRef.current;
         // Long enough to cover a Lambda sweep, which fires once a minute.
