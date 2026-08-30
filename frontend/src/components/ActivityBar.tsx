@@ -10,7 +10,6 @@ import {
   Plug,
   Network,
   FlaskConical,
-  RotateCcw,
   Command,
   BookMarked,
   PanelRight,
@@ -154,12 +153,13 @@ interface Props {
   active: ViewId;
   /** Destinations contributed by installed extensions. */
   installed: ViewId[];
+  /** Raw extension ids, for the utility buttons that are not destinations. */
+  installedIds: string[];
   /** Back to the opening screen. The wordmark is the way home. */
   onBrand: () => void;
   onSelect: (id: ViewId) => void;
   badges?: Partial<Record<ViewId, number>>;
   dockBadge?: number;
-  onReset: () => void;
   onCommandPalette: () => void;
   onToggleDock: () => void;
 }
@@ -167,11 +167,11 @@ interface Props {
 export function ActivityBar({
   active,
   installed,
+  installedIds,
   onBrand,
   onSelect,
   badges = {},
   dockBadge = 0,
-  onReset,
   onCommandPalette,
   onToggleDock,
 }: Props) {
@@ -262,64 +262,67 @@ export function ActivityBar({
         {expanded && <span className={styles.itemLabel}>Collapse</span>}
       </button>
 
+      {/* Utilities, and only the ones asked for.
+          The side panel button appears when something is in it; Commands and
+          Docs are extensions because a button for a keyboard shortcut and a
+          link to a website are conveniences rather than parts of the product.
+
+          Restore sample is gone from here entirely. Re-seeding the database is
+          a maintenance action, not a destination, and sitting permanently
+          beside "Explore the demo" it read as a second way to do the same
+          thing. It lives on Ctrl-K, and in the banner that appears when the
+          sample world has actually aged, which is the moment anyone needs it. */}
       <div className={styles.group}>
-        <button
-          type="button"
-          className={styles.item}
-          onClick={onToggleDock}
-          data-tour="nav-dock"
-          aria-label="Copilot and approvals"
-        >
-          <PanelRight size={20} strokeWidth={1.75} />
-          {expanded && <span className={styles.itemLabel}>Side panel</span>}
-          {dockBadge > 0 && <span className={styles.badge}>{dockBadge}</span>}
-          {!expanded && (
-            <span className={styles.tooltip} role="tooltip">
-              <strong>Side panel</strong>
-              <em>Copilot and approvals · Ctrl \</em>
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          className={styles.item}
-          onClick={onCommandPalette}
-          aria-label="Command palette"
-        >
-          <Command size={20} strokeWidth={1.75} />
-          {expanded && <span className={styles.itemLabel}>Commands</span>}
-          {!expanded && (
-            <span className={styles.tooltip} role="tooltip">
-              <strong>Commands</strong>
-              <em>Ctrl K</em>
-            </span>
-          )}
-        </button>
-        <a href="/docs" className={styles.item} aria-label="Documentation">
-          <BookMarked size={20} strokeWidth={1.75} />
-          {expanded && <span className={styles.itemLabel}>Docs</span>}
-          {!expanded && (
-            <span className={styles.tooltip} role="tooltip">
-              <strong>Documentation</strong>
-              <em>Concepts, API, operations</em>
-            </span>
-          )}
-        </a>
-        <button
-          type="button"
-          className={styles.item}
-          onClick={onReset}
-          aria-label="Restore sample world"
-        >
-          <RotateCcw size={20} strokeWidth={1.75} />
-          {expanded && <span className={styles.itemLabel}>Restore sample</span>}
-          {!expanded && (
-            <span className={styles.tooltip} role="tooltip">
-              <strong>Restore sample</strong>
-              <em>Keeps everything you made</em>
-            </span>
-          )}
-        </button>
+        {(installedIds.includes("copilot") ||
+          installedIds.includes("approvals")) && (
+          <button
+            type="button"
+            className={styles.item}
+            onClick={onToggleDock}
+            data-tour="nav-dock"
+            aria-label="Side panel"
+          >
+            <PanelRight size={20} strokeWidth={1.75} />
+            {expanded && <span className={styles.itemLabel}>Side panel</span>}
+            {dockBadge > 0 && <span className={styles.badge}>{dockBadge}</span>}
+            {!expanded && (
+              <span className={styles.tooltip} role="tooltip">
+                <strong>Side panel</strong>
+                <em>Ctrl \</em>
+              </span>
+            )}
+          </button>
+        )}
+        {installedIds.includes("commands") && (
+          <button
+            type="button"
+            className={styles.item}
+            onClick={onCommandPalette}
+            data-tour="nav-commands"
+            aria-label="Command palette"
+          >
+            <Command size={20} strokeWidth={1.75} />
+            {expanded && <span className={styles.itemLabel}>Commands</span>}
+            {!expanded && (
+              <span className={styles.tooltip} role="tooltip">
+                <strong>Commands</strong>
+                <em>Ctrl K</em>
+              </span>
+            )}
+          </button>
+        )}
+        {installedIds.includes("docs") && (
+          <a href="/docs" className={styles.item} aria-label="Documentation">
+            <BookMarked size={20} strokeWidth={1.75} />
+            {expanded && <span className={styles.itemLabel}>Docs</span>}
+            {!expanded && (
+              <span className={styles.tooltip} role="tooltip">
+                <strong>Documentation</strong>
+                <em>Concepts, API, operations</em>
+              </span>
+            )}
+          </a>
+        )}
       </div>
     </nav>
   );

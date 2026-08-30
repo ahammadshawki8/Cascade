@@ -102,6 +102,62 @@ export const EXTENSIONS: Extension[] = [
     },
   },
   {
+    id: "approvals",
+    name: "Approvals and insights",
+    blurb: "Actions parked for a human, and policy changes the engine suggests.",
+    surface: "Adds an Approvals tab to the side panel (Ctrl-\\)",
+    about:
+      "Two queues. Approvals holds actions that policy permits but that a procedure has not yet earned the right to take unsupervised. Insights holds policy changes the engine has worked out from your own history — a widening it can show would have recovered incidents that escalated, without permitting anything new.",
+    whenToUse:
+      "Only once you have turned autonomy gating on. It is off by default, because a threshold above zero stops every first reuse for a human, which is the right behaviour for production and a poor one for a demo.",
+    howToUse: [
+      "Set AUTONOMY_MIN_CONFIDENCE to about 0.6 to make the gate real. A procedure then earns autonomy over three supervised successes, 0.30 to 0.45 to 0.60.",
+      "Approving re-runs the task rather than resuming it mid-flight. That is only safe because every side-effecting tool is idempotent on the task and step, which is asserted in the suite.",
+      "Read an insight as a proposal, not a recommendation. It is computed by re-deciding every historical incident under the change, and you can re-run that computation before committing.",
+      "Expect both to be empty on a fresh install. That is the honest default, not a fault.",
+    ],
+    example: {
+      title: "The gate that does independent work",
+      body: "Policy already refuses tier-1 services, so the tier gate never reaches autonomy. The one that earns its keep is confidence: policy permits the action, and the procedure simply has not been right often enough yet to take it alone. That is a different question from whether the action is allowed, and it is the reason this exists as its own queue.",
+    },
+  },
+  {
+    id: "commands",
+    name: "Command palette button",
+    blurb: "A button for Ctrl-K, for people who would rather click than remember.",
+    surface: "Adds Commands to the sidebar",
+    about:
+      "The palette reaches every destination, every incident, the copilot and the reset from one box, with subsequence matching so `gint` finds Go to Intelligence. This extension only adds the button; the keyboard shortcut works whether or not it is installed.",
+    whenToUse:
+      "Install it if you are new here or you share a screen with people who are. Remove it once Ctrl-K is in your fingers.",
+    howToUse: [
+      "Type a few letters of what you want rather than navigating. It matches on subsequences, not prefixes.",
+      "It reaches destinations you have not installed and adds them as it opens them, so nothing is ever truly out of reach.",
+    ],
+    example: {
+      title: "Getting somewhere you removed",
+      body: "You took Intelligence off the sidebar last week and now want the blast radius before changing a rule. Ctrl-K, type `blast`, and it comes back with the screen. Removing something here has never meant losing it.",
+    },
+  },
+  {
+    id: "docs",
+    name: "Documentation link",
+    blurb: "A sidebar link to the product documentation.",
+    surface: "Adds Docs to the sidebar",
+    about:
+      "Seventeen pages covering what to type, what to press and what each badge means, written for someone using the product rather than reading its source. It opens in the same tab and comes back.",
+    whenToUse:
+      "When a screen has not explained itself and you want more than a tooltip. The extension pages you are reading now cover the auxiliary screens; the docs cover the four that are always here.",
+    howToUse: [
+      "Start at Key concepts if the vocabulary is unfamiliar. Provenance, freshness and staleness have precise meanings here and the rest of the docs assume them.",
+      "The API reference lists every endpoint with the role it needs, which is the fastest way to see what an agent of your own could do.",
+    ],
+    example: {
+      title: "Working out what a badge means",
+      body: "A procedure reads `suspect` and you want to know whether that is bad. Managing runbooks explains the four states, which transitions are automatic, and why a suspect procedure is refused rather than repaired.",
+    },
+  },
+  {
     id: "copilot",
     name: "Ops Copilot",
     blurb: "Ask about this database in English and see the SQL it ran.",

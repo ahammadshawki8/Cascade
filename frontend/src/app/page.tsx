@@ -587,7 +587,17 @@ export default function CascadeApp() {
           },
           ...prev,
         ]);
-        // A gated action is the one moment the operator must not miss.
+        /**
+         * A gated action is the one moment the operator must not miss, so it
+         * installs its own surface if that surface is not there.
+         *
+         * Approvals is an extension because it is empty by default: the
+         * autonomy gate is off unless somebody raises the threshold. But the
+         * instant it does park an action, an uninstalled panel would mean a
+         * task waiting on a human who has no way to see it, which is a worse
+         * failure than a tab nobody opens.
+         */
+        install("approvals");
         setDockTab("approvals");
         setDockOpen(true);
         setToast("An action needs your approval.");
@@ -1767,14 +1777,14 @@ export default function CascadeApp() {
       <ActivityBar
         active={view}
         installed={installedNav}
+        installedIds={installed}
         onBrand={() => {
           resetLanding();
           setLanding(true);
         }}
         onSelect={setView}
-        badges={{ system: insights.length }}
+        badges={{ intelligence: insights.length }}
         dockBadge={approvals.length}
-        onReset={handleResetDemo}
         onCommandPalette={() => setPaletteOpen(true)}
         onToggleDock={() => setDockOpen((open) => !open)}
       />
