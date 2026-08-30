@@ -59,6 +59,23 @@ every time.
 instant the transaction commits, in-flight tasks are interrupted before their
 next side effect, and high-confidence runbooks are queued for re-derivation.
 
+```mermaid
+flowchart LR
+    A["Incident<br/>arrives"] --> B{"Anything in<br/>memory?"}
+    B -- "no match" --> C["Plan with tools<br/>policy checked per action"]
+    C --> D["Remediate<br/>or escalate"]
+    D --> E["Compile a runbook<br/>+ the rule versions it used"]
+    E -.-> F
+    B -- "match" --> F{"Every cited rule<br/>still at head?"}
+    F -- "yes" --> G["Evaluate preconditions<br/>then replay stored steps"]
+    F -- "NO" --> C
+    G --> H["Done, no model called"]
+```
+
+**The one edge that matters is `F -- NO --> C`.** A runbook that matched by
+meaning is refused because a rule it was built on has moved, and the incident is
+re-planned from scratch under current policy.
+
 ### The part that matters
 
 Run `INC-1009` after shortening the rollback window. The runbook still matches
@@ -77,7 +94,7 @@ The full method, per-case results and the reverted experiments are in
 [`backend/eval/out/`](backend/eval/out/) and rendered in the **Evidence** screen
 of the running app.
 
-Twelve seeded incidents, decided twice — once under the policy the runbooks were
+Twelve seeded incidents, decided twice: once under the policy the runbooks were
 learned under, then again with one rule tightened. Twenty-two scored decisions
 per arm, identical cases, same model on all three.
 
@@ -125,7 +142,7 @@ baselines and the evaluation, is in [`REPRODUCTION.md`](REPRODUCTION.md).
 # database
 docker compose up -d crdb && make reset
 
-# backend — run_local.py, not bare uvicorn, on Windows
+# backend. Use run_local.py, not bare uvicorn, on Windows
 cd backend && pip install -e . && python run_local.py
 
 # frontend
@@ -152,8 +169,8 @@ cascade, and the refusal.
 
 ## Architecture
 
-One CockroachDB cluster holds all four kinds of memory — policy, procedures,
-episodes and in-flight state — plus the embeddings, so there is nothing to keep
+One CockroachDB cluster holds all four kinds of memory (policy, procedures,
+episodes and in-flight state) plus the embeddings, so there is nothing to keep
 in sync.
 
 ```
@@ -173,6 +190,30 @@ compilation, Claude Haiku 4.5 for fast paths, Titan Text Embeddings v2 for the
 
 Deployed on ECS Fargate behind CloudFront, with a Lambda worker on SQS and the
 frontend on Amplify.
+
+### Why invalidation is constant time
+
+```mermaid
+flowchart TD
+    subgraph rules["rules"]
+        R1["incident.rollback_window<br/>head = v2"]
+        R2["incident.auto_remediate_tier<br/>head = v1"]
+    end
+    subgraph deps["playbook_deps"]
+        D1["pinned: rollback_window v1"]
+        D2["pinned: auto_remediate_tier v1"]
+    end
+    P["rollback for bad deploy"] --> D1
+    P --> D2
+    D1 -. "v1 != v2, STALE" .-> R1
+    D2 -- "v1 == v1, fresh" --> R2
+```
+
+Changing a rule writes four rows: the new version, the moved head pointer, an
+audit record and one event. No procedure is touched, and none needs to be. The
+answer to "is this still valid" is computed by the join at the moment it is
+asked, so it cannot be forgotten by a writer that did not know the procedure
+existed.
 
 ### Design decisions worth defending
 
@@ -245,18 +286,18 @@ side-effecting tool is idempotent on `(task_id, step_index)`.
 
 ## Documentation
 
-- [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) — how this got here,
+- [`IMPROVEMENT_CHANGELOG.md`](IMPROVEMENT_CHANGELOG.md) covers how this got here,
   what was reverted, and the failure mode it is still exposed to
-- [`REPRODUCTION.md`](REPRODUCTION.md) — clean-environment setup and every
+- [`REPRODUCTION.md`](REPRODUCTION.md) covers clean-environment setup and every
   command
-- [`DEVIATIONS.md`](DEVIATIONS.md) — 16 deviations, with rationale
-- [`docs/query-plans.md`](docs/query-plans.md) — the `EXPLAIN` proof, including
+- [`DEVIATIONS.md`](DEVIATIONS.md) records 16 deviations, with rationale
+- [`docs/query-plans.md`](docs/query-plans.md) holds the `EXPLAIN` proof, including
   the full-scan plan one stray predicate produced
-- [`docs/multi-region.md`](docs/multi-region.md) — survival goals and what they
+- [`docs/multi-region.md`](docs/multi-region.md) covers survival goals and what they
   change
-- [`docs/skills-review.md`](docs/skills-review.md) — 12 schema and query
+- [`docs/skills-review.md`](docs/skills-review.md) lists 12 schema and query
   findings, each a live defect at the time
-- **`/docs` in the running app** — 17 pages written for using the product
+- **`/docs` in the running app**, 17 pages written for using the product
 
 ---
 
