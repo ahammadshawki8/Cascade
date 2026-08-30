@@ -903,10 +903,34 @@ export default function CascadeApp() {
       setReplaying(false);
 
       if (which === "explore") {
+        /**
+         * Hold until the real runbook exists, not for a decorative moment.
+         *
+         * Everything after this step reads real state: the card with its
+         * provenance, the dots that grey out when the rule moves, the Re-learn
+         * control. Firing `compiled` on a timer let the tour run ahead of the
+         * cluster and land on screens that were still empty.
+         *
+         * The pre-warm at tour start means this has usually already happened
+         * and the wait is nothing. When it has not, the step says what it is
+         * waiting for rather than looking stalled. `compile:settled` fires
+         * either way, because a compile can legitimately produce no runbook and
+         * the tour must not hang on that.
+         */
         setCompiling(true);
-        await new Promise((r) => setTimeout(r, 900));
+        const deadline = Date.now() + 90_000;
+        let landed = false;
+        while (Date.now() < deadline && !landed) {
+          try {
+            const res = await fetch(`${API_BASE}/playbooks`);
+            if (res.ok) landed = ((await res.json())?.count ?? 0) > 0;
+          } catch {
+            /* keep waiting; the deadline is the escape */
+          }
+          if (!landed) await new Promise((r) => setTimeout(r, 2000));
+        }
         setCompiling(false);
-        fireTour("runbook:compiled");
+        if (landed) fireTour("runbook:compiled");
         fireTour("compile:settled");
       } else if (which === "guided") {
         fireTour("run:reused");
@@ -1115,6 +1139,26 @@ export default function CascadeApp() {
     goToStep(0);
     try {
       await handleResetDemo();
+      /**
+       * Start the real cold run now, in the background, and never wait for it.
+       *
+       * The walkthrough replays recordings so nobody watches a spinner, but the
+       * steps after it need state that only a real run produces: a runbook to
+       * look at, provenance edges to turn grey, and something for Re-learn to
+       * act on. Playback alone left those screens empty and the tour waiting on
+       * an event that could not fire.
+       *
+       * Kicking it off here buys the thirty-odd seconds it needs against the
+       * time a viewer spends reading the opening two cards, so by the time the
+       * recording has played the real runbook is usually already there.
+       */
+      void fetch(`${API_BASE}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "Remediate INC-1001" }),
+      }).catch(() => {
+        /* The tour degrades to playback-only rather than failing outright. */
+      });
     } finally {
       setTourPreparing(false);
     }
@@ -1667,7 +1711,6 @@ export default function CascadeApp() {
       <ActivityBar
         active={view}
         mode={shellMode}
-        onExitWorkMode={() => applyMode("guided")}
         onSelect={setView}
         badges={{ system: insights.length }}
         dockBadge={approvals.length}

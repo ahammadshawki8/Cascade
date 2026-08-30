@@ -557,14 +557,19 @@ export function ConnectionsPanel({
               </>
             )}
 
+            {/* The affirmative action after being shown a secret exactly once,
+                so it reads as a button. `.ghost` is a dark box with a border,
+                which next to the key field and the snippet was one more inset
+                rectangle in a column of inset rectangles. */}
             <button
-              className={styles.ghost}
+              className={styles.doneBtn}
               onClick={() => {
                 setIssued(null);
                 setSnippet(null);
               }}
             >
-              Done
+              <Check size={13} />
+              Done, I have copied it
             </button>
           </div>
         )}

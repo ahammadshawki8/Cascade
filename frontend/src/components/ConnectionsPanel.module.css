@@ -447,3 +447,26 @@
 @media (prefers-reduced-motion: reduce) {
   .spin { animation: none; }
 }
+
+/* The key is shown once and never again, so dismissing it is a decision rather
+   than a nicety. Filled, not outlined: `.ghost` is a dark bordered box, which
+   sitting under the key field and the config snippet made it the third inset
+   rectangle in a column and read as one more thing to type into. */
+.doneBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background-color: var(--accent);
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.doneBtn:hover { filter: brightness(1.08); }

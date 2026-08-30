@@ -268,9 +268,9 @@ export function GuidedTour({
                   but "should never" is not a thing to leave a reviewer stranded
                   on, and a walkthrough that cannot be advanced is worse than
                   one that admits it lost the thread. */}
-              {stuck && (
+              {(stuck || step.optional) && (
                 <button className={styles.unstick} onClick={onAdvance}>
-                  Continue anyway
+                  {step.optional && !stuck ? "Skip this one" : "Continue anyway"}
                   <ArrowRight size={12} />
                 </button>
               )}

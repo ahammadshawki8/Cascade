@@ -16,7 +16,6 @@ import {
   PanelRight,
   ChevronsLeft,
   ChevronsRight,
-  Sparkles,
 } from "lucide-react";
 
 const EXPANDED_KEY = "cascade_rail_expanded";
@@ -130,7 +129,6 @@ export function viewsFor(mode: ShellMode): Item[] {
 interface Props {
   active: ViewId;
   mode: ShellMode;
-  onExitWorkMode: () => void;
   onSelect: (id: ViewId) => void;
   badges?: Partial<Record<ViewId, number>>;
   dockBadge?: number;
@@ -142,7 +140,6 @@ interface Props {
 export function ActivityBar({
   active,
   mode,
-  onExitWorkMode,
   onSelect,
   badges = {},
   dockBadge = 0,
@@ -215,24 +212,6 @@ export function ActivityBar({
       </div>
 
       <div className={styles.spacer} />
-
-      {/* Work mode has to announce itself.
-          Hiding two destinations without saying so is indistinguishable from
-          them never having existed, which would leave anyone who saw them
-          during the walkthrough wondering where they went and whether they
-          broke something. */}
-      {mode === "work" && (
-        <button
-          type="button"
-          className={styles.modeBadge}
-          onClick={onExitWorkMode}
-          aria-label="Show every screen again"
-          title="Show every screen again"
-        >
-          <Sparkles size={14} />
-          {expanded && <span>Work mode · show all</span>}
-        </button>
-      )}
 
       <button
         type="button"

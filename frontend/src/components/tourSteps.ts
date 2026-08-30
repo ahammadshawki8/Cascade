@@ -72,6 +72,16 @@ export interface TourStep {
   action?: string;
   waitingLabel?: string;
   nextLabel?: string;
+  /**
+   * This step waits on something genuinely slow, and may be passed over.
+   *
+   * The generic "Continue anyway" only appears after 45 seconds of waiting,
+   * which is right for a step that has gone wrong and wrong for one that is
+   * simply long: a re-learn is a real model call and takes about a minute, so
+   * the escape would fire in the middle of a perfectly healthy run. Steps
+   * marked optional offer the way past immediately instead.
+   */
+  optional?: boolean;
 }
 
 export const TOUR: TourStep[] = [
@@ -263,6 +273,7 @@ export const TOUR: TourStep[] = [
     advanceOn: "relearn:done",
     action: "Click Re-learn",
     waitingLabel: "Picking an incident, re-solving, compiling",
+    optional: true,
   },
 
   {
