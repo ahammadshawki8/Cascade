@@ -313,8 +313,8 @@ export const TOUR: TourStep[] = [
   {
     id: "work-mode",
     title: "Now empty it out",
-    body: "<b>Work mode</b> clears the sample incidents and the runbooks this walkthrough compiled, and leaves you the four screens with nothing in them. Your rules, imported procedures, connections and keys all survive it.\n\nThe sample world comes back from the header button whenever you want it.",
-    mechanism: "Nothing is deleted, and the extensions you added stay added.",
+    body: "<b>Work mode</b> clears the sample incidents and the runbooks this walkthrough compiled, switches the extensions back off, and leaves you the four screens with nothing in them. Your rules, imported procedures, connections and keys all survive it.\n\nThe checklist on the Work screen is where to start, and the sample world comes back from the header button whenever you want it.",
+    mechanism: "Nothing is deleted. The sidebar goes back to the four screens plus Extensions, and anything this walkthrough switched on is one click away there again.",
     nextLabel: "Switch to work mode",
   },
 ];

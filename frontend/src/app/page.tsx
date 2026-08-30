@@ -1055,10 +1055,31 @@ export default function CascadeApp() {
    */
   const enterWorkMode = useCallback(async () => {
     applyMode("work");
+    setView("work");
     setWorkTab("inbox");
     setDockOpen(false);
+
+    /**
+     * Work mode is a clean slate, and that includes the sidebar.
+     *
+     * The walkthrough turns every extension on so it can visit them, which is
+     * right for a tour and wrong for the thing you are left holding afterwards:
+     * somebody who has just asked for an empty workspace should not find nine
+     * icons in it. They are one click away again on the Extensions screen, and
+     * that screen is the point.
+     */
+    setInstalled([]);
+    saveInstalled([]);
+
+    /**
+     * And the checklist comes back, because in an empty workspace it is the
+     * only thing on screen that says what to do next. Dismissing it during the
+     * demo was a decision about the demo.
+     */
+    setChecklistOff(false);
+
     await handleResetDemo();
-    setToast("Work mode. Your workspace is empty — connect something to fill it.");
+    setToast("Work mode. Empty workspace: the checklist is where to start.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyMode]);
 
