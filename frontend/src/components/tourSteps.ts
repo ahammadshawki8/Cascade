@@ -399,18 +399,44 @@ export const TOUR: TourStep[] = [
     target: '[data-tour="nav-connections"]',
     view: "connections",
     reveal: [],
-    nextLabel: "System",
+    nextLabel: "The rest of the screens",
+  },
+
+  {
+    id: "tour-extensions",
+    title: "Four screens are the product. The rest you choose.",
+    body:
+      "Work, Procedures, Policy and Connections are the whole system: incidents run, memory lives, rules invalidate it, and other things reach it. You have seen all four.\n\nEverything else lives here and starts switched off. Each one explains what it is, when you would open it, how to use it properly and a worked example, so you can decide rather than guess. <b>Adding one puts it on the sidebar; removing it takes the screen away and deletes nothing.</b>",
+    mechanism:
+      "Continuing adds all four so the rest of this walkthrough can visit them. Remove any of them afterwards and nothing breaks.",
+    target: '[data-tour="nav-extensions"]',
+    view: "extensions",
+    reveal: [],
+    nextLabel: "Add them and carry on",
   },
 
   {
     id: "tour-system",
-    title: "System — the machine, and what it saved you",
+    title: "System — the machine, read live",
     body:
-      "<b>Architecture</b> draws the live provenance graph and the query plan retrieval actually used, read from the cluster rather than from a diagram.\n\n<b>Intelligence</b> answers three questions you would otherwise have to guess at. <b>Savings</b>: what reuse has cost and avoided. <b>Blast radius</b>: what a given rule is holding up, before you touch it. <b>Negative memory</b>: approaches that already failed, so the agent does not pay to rediscover them.",
+      "The provenance graph as it actually is, and the query plan retrieval actually used, both read from the cluster rather than drawn in a diagram.\n\nThe useful habit here is checking a claim instead of believing it. The README says a rule change is four writes whatever depends on it; the edge count on this screen moves with what you have learned, and the write count does not.",
     mechanism:
-      "These are read-only views over the same tables. Nothing here is a second copy of anything.",
+      "If the plan ever stops naming pb_embed_idx, retrieval has quietly become a table scan and every latency number elsewhere in the product is wrong.",
     target: '[data-tour="nav-system"]',
     view: "system",
+    reveal: [],
+    nextLabel: "Intelligence",
+  },
+
+  {
+    id: "tour-intelligence",
+    title: "Intelligence — what it saved, what a rule holds up, what already failed",
+    body:
+      "<b>Savings</b> is what reuse has cost and avoided; read it as a ratio, since the total only tells you how much you have run. <b>Blast radius</b> is what a rule is currently holding up, which is worth knowing before you tighten one. <b>Negative memory</b> is approaches that already failed on a class of incident, so the planner does not pay to rediscover them.",
+    mechanism:
+      "Negative memory is advisory and never blocks anything. Policy blocks things; a warning that could block would be a second policy engine nobody wrote down.",
+    target: '[data-tour="nav-intelligence"]',
+    view: "intelligence",
     reveal: [],
     nextLabel: "Evidence",
   },
@@ -474,11 +500,11 @@ export const TOUR: TourStep[] = [
    */
   {
     id: "work-mode",
-    title: "Now put most of it away",
+    title: "Now empty it out and make it yours",
     body:
-      "You have seen everything, which is the point of a walkthrough and a bad way to run a tool day to day.\n\n<b>Work mode</b> keeps the four screens you actually operate — incidents, procedures, policy, connections — and hides the ones that exist to explain the system rather than run it. Nothing is deleted, and <b>Ctrl-K</b> brings it all back whenever you want it.",
+      "Everything you have seen ran on data that shipped with the product, which is the fair objection to any demo.\n\n<b>Work mode</b> answers it: the sample incidents go, the runbooks the walkthrough compiled go, and you are left with the four screens and nothing in them. Your rules, imported procedures, connections and keys all survive it.\n\nFrom there it is the checklist on the Work screen: bring a runbook you already have, write a rule the agent must obey, or give your own agent a key.",
     mechanism:
-      "The teaching surfaces are System and Evidence. They are how you understand this, not how you use it.",
+      "Nothing is deleted. The sample world comes back from the header button whenever you want it, and the extensions you added stay added.",
     reveal: [],
     nextLabel: "Switch to work mode",
   },

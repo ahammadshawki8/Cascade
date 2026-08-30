@@ -9,6 +9,13 @@ import {
   ShellMode,
   viewsFor,
 } from "../components/ActivityBar";
+import { ExtensionsPanel } from "../components/ExtensionsPanel";
+import {
+  EXTENSIONS,
+  loadInstalled,
+  saveInstalled,
+  installedViews,
+} from "../components/extensions";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { StatusBar } from "../components/StatusBar";
 import { CommandPalette, Command } from "../components/CommandPalette";
@@ -114,6 +121,14 @@ export default function CascadeApp() {
    * flashing the shell before the landing is worse than a brief hold.
    */
   const [landing, setLanding] = useState(true);
+  /**
+   * Which auxiliary screens this browser has asked for.
+   *
+   * Empty by default, in both modes. Four destinations are the product and one
+   * is the shelf they come from; shipping the rest on the rail was what made
+   * the tool read as complicated rather than as generous.
+   */
+  const [installed, setInstalled] = useState<string[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   /**
@@ -244,7 +259,30 @@ export default function CascadeApp() {
 
   useEffect(() => {
     if (landingSeen()) setLanding(false);
+    setInstalled(loadInstalled());
   }, []);
+
+  const install = useCallback((id: string) => {
+    setInstalled((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      saveInstalled(next);
+      return next;
+    });
+  }, []);
+
+  const removeExtension = useCallback((id: string) => {
+    setInstalled((prev) => {
+      const next = prev.filter((x) => x !== id);
+      saveInstalled(next);
+      // Never leave somebody looking at a screen that is no longer on the rail.
+      const gone = EXTENSIONS.find((e) => e.id === id)?.view;
+      if (gone) setView((cur) => (cur === gone ? "extensions" : cur));
+      return next;
+    });
+  }, []);
+
+  const installedNav = useMemo(() => installedViews(installed), [installed]);
 
   const applyMode = useCallback((next: ShellMode) => {
     setShellMode(next);
@@ -256,11 +294,8 @@ export default function CascadeApp() {
     // Never leave someone looking at a destination that is no longer in the
     // rail. Switching to work mode while on System would otherwise render a
     // view with no way back to it and no icon to explain where it went.
-    if (next === "work") {
-      setView((current) =>
-        viewsFor("work").some((v) => v.id === current) ? current : "work"
-      );
-    }
+    // Mode no longer decides which destinations exist — Extensions does — so
+    // there is nothing to redirect away from here.
   }, []);
 
   const cancelTour = useCallback(() => setTourStep(null), []);
@@ -268,6 +303,18 @@ export default function CascadeApp() {
   const advanceTour = useCallback(() => {
     setTourStep((i) => {
       if (i == null) return null;
+      /**
+       * Leaving the extensions step turns them all on.
+       *
+       * The steps after it visit those destinations, and a spotlight pointing
+       * at an icon that is not on the rail is worse than no spotlight. Doing it
+       * on advance rather than asking also demonstrates the mechanism it is
+       * describing: they appear as you continue, and the card says they can be
+       * removed again afterwards.
+       */
+      if (TOUR[i]?.id === "tour-extensions") {
+        queueMicrotask(() => EXTENSIONS.forEach((e) => install(e.id)));
+      }
       // Finishing the last step is the one place work mode is offered, because
       // it is the only point at which someone has actually seen what they are
       // agreeing to put away.
@@ -282,7 +329,7 @@ export default function CascadeApp() {
       queueMicrotask(() => goToStep(next));
       return i;
     });
-  }, [goToStep, applyMode]);
+  }, [goToStep, applyMode, install]);
 
   /**
    * A step ends when the system finishes its half, never on the click.
@@ -1372,21 +1419,23 @@ export default function CascadeApp() {
     // Every destination stays reachable from here, in either mode. Work mode is
     // about what is in front of you, not about taking anything away, and a
     // palette that hid what the rail hides would make it a real removal.
-    const go: Command[] = VIEWS.map((v) => ({
-      id: `go:${v.id}`,
-      label: `Go to ${v.label}`,
-      hint:
-        shellMode === "work" && !viewsFor("work").some((w) => w.id === v.id)
-          ? `${v.hint} · hidden in work mode`
-          : v.hint,
-      group: "Navigate",
-      run: () => {
-        // Visiting a hidden destination brings the rail back with it, rather
-        // than dropping someone on a screen with no icon to return to.
-        if (!viewsFor(shellMode).some((w) => w.id === v.id)) applyMode("guided");
-        setView(v.id);
-      },
-    }));
+    // Everything stays reachable from here. An uninstalled destination is
+    // offered with what it would cost — one click that also adds it to the
+    // rail, so nobody lands on a screen with no icon to return to.
+    const go: Command[] = VIEWS.map((v) => {
+      const onRail = viewsFor(installedNav).some((w) => w.id === v.id);
+      const ext = EXTENSIONS.find((e) => e.view === v.id);
+      return {
+        id: `go:${v.id}`,
+        label: onRail ? `Go to ${v.label}` : `Add and open ${v.label}`,
+        hint: onRail ? v.hint : `${v.hint} · adds it to the sidebar`,
+        group: "Navigate",
+        run: () => {
+          if (!onRail && ext) install(ext.id);
+          setView(v.id);
+        },
+      };
+    });
 
     const modeCommand: Command[] = [
       {
@@ -1608,7 +1657,7 @@ export default function CascadeApp() {
 
     return [...go, ...runs, ...asks, ...actions, ...modeCommand];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleTaskSubmit, refreshAll, fetchInsights, startTour, shellMode, applyMode]);
+  }, [handleTaskSubmit, refreshAll, fetchInsights, startTour, shellMode, applyMode, installedNav, install]);
 
   // ------------------------------------------------------------------ render
 
@@ -1710,7 +1759,7 @@ export default function CascadeApp() {
     <div className={`${styles.shell} appShell`}>
       <ActivityBar
         active={view}
-        mode={shellMode}
+        installed={installedNav}
         onBrand={() => {
           resetLanding();
           setLanding(true);
@@ -1923,31 +1972,23 @@ export default function CascadeApp() {
 
               {view === "system" && (
                 <div className={styles.full}>
-                  <div className={styles.tabs} role="tablist">
-                    {(
-                      [
-                        ["architecture", "Architecture"],
-                        ["intelligence", "Intelligence"],
-                      ] as [SystemTab, string][]
-                    ).map(([id, label]) => (
-                      <button
-                        key={id}
-                        role="tab"
-                        aria-selected={systemTab === id}
-                        className={`${styles.tab} ${
-                          systemTab === id ? styles.tabActive : ""
-                        }`}
-                        onClick={() => setSystemTab(id)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {systemTab === "architecture" ? (
-                    <ArchitecturePanel apiBase={API_BASE} refreshKey={refreshKey} />
-                  ) : (
-                    <IntelligencePanel apiBase={API_BASE} refreshKey={refreshKey} />
-                  )}
+                  <ArchitecturePanel apiBase={API_BASE} refreshKey={refreshKey} />
+                </div>
+              )}
+
+              {view === "intelligence" && (
+                <div className={styles.full}>
+                  <IntelligencePanel apiBase={API_BASE} refreshKey={refreshKey} />
+                </div>
+              )}
+
+              {view === "extensions" && (
+                <div className={styles.full}>
+                  <ExtensionsPanel
+                    installed={installed}
+                    onInstall={install}
+                    onRemove={removeExtension}
+                  />
                 </div>
               )}
 

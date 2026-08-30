@@ -16,6 +16,8 @@ import {
   PanelRight,
   ChevronsLeft,
   ChevronsRight,
+  Blocks,
+  Sparkles,
 } from "lucide-react";
 
 const EXPANDED_KEY = "cascade_rail_expanded";
@@ -54,7 +56,9 @@ export type ViewId =
   | "procedures"
   | "policy"
   | "connections"
+  | "extensions"
   | "system"
+  | "intelligence"
   | "evidence";
 
 /**
@@ -79,8 +83,11 @@ interface Item {
   label: string;
   hint: string;
   icon: typeof Terminal;
-  /** Present in work mode. False for the surfaces that teach rather than do. */
-  working?: boolean;
+  /**
+   * Always on the rail. Four destinations are the product and one is the shelf
+   * the rest come from; everything else arrives through Extensions.
+   */
+  core?: boolean;
 }
 
 export const VIEWS: Item[] = [
@@ -89,30 +96,43 @@ export const VIEWS: Item[] = [
     label: "Work",
     hint: "Run incidents and review past runs",
     icon: Terminal,
-    working: true,
+    core: true,
   },
   {
     id: "procedures",
     label: "Procedures",
     hint: "Runbooks, learned or imported",
     icon: BookOpen,
-    working: true,
+    core: true,
   },
   {
     id: "policy",
     label: "Policy",
     hint: "Rules, and what changing one costs",
     icon: Shield,
-    working: true,
+    core: true,
   },
   {
     id: "connections",
     label: "Connections",
     hint: "Slack, and agents that call in",
     icon: Plug,
-    working: true,
+    core: true,
+  },
+  {
+    id: "extensions",
+    label: "Extensions",
+    hint: "Add the screens you need, remove the ones you do not",
+    icon: Blocks,
+    core: true,
   },
   { id: "system", label: "System", hint: "The machinery, read live", icon: Network },
+  {
+    id: "intelligence",
+    label: "Intelligence",
+    hint: "Savings, blast radius, and what already failed",
+    icon: Sparkles,
+  },
   {
     id: "evidence",
     label: "Evidence",
@@ -121,14 +141,19 @@ export const VIEWS: Item[] = [
   },
 ];
 
-/** The destinations visible in a mode. Work mode drops the teaching surfaces. */
-export function viewsFor(mode: ShellMode): Item[] {
-  return mode === "work" ? VIEWS.filter((v) => v.working) : VIEWS;
+/**
+ * The rail: the four that are the product, the shelf, and whatever has been
+ * installed. Mode no longer decides this — an explicit choice does, which is
+ * the point of Extensions.
+ */
+export function viewsFor(installed: ViewId[]): Item[] {
+  return VIEWS.filter((v) => v.core || installed.includes(v.id));
 }
 
 interface Props {
   active: ViewId;
-  mode: ShellMode;
+  /** Destinations contributed by installed extensions. */
+  installed: ViewId[];
   /** Back to the opening screen. The wordmark is the way home. */
   onBrand: () => void;
   onSelect: (id: ViewId) => void;
@@ -141,7 +166,7 @@ interface Props {
 
 export function ActivityBar({
   active,
-  mode,
+  installed,
   onBrand,
   onSelect,
   badges = {},
@@ -195,7 +220,7 @@ export function ActivityBar({
       </button>
 
       <div className={styles.group}>
-        {viewsFor(mode).map((item) => {
+        {viewsFor(installed).map((item) => {
           const Icon = item.icon;
           const count = badges[item.id] ?? 0;
           const isActive = active === item.id;
