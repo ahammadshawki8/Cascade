@@ -91,7 +91,6 @@ export const TOUR: TourStep[] = [
     body: "First a short pass over the five screens, so nothing later is a surprise. Then one incident end to end: the agent solves something it has never seen, writes down what it did, reuses it, and refuses it once the rules move.\n\nThe second half runs for real against a live cluster, so it takes a couple of minutes. Skip works on every step.",
     mechanism: "Nothing in this first part changes any data.",
     view: "work",
-    reveal: [],
     nextLabel: "Start",
   },
 
@@ -102,7 +101,6 @@ export const TOUR: TourStep[] = [
     mechanism: "The verdict on a card is computed from the same rules the agent is bound by. It is not a label somebody typed.",
     target: '[data-tour="nav-work"]',
     view: "work",
-    reveal: [],
     nextLabel: "What the numbers mean",
   },
 
@@ -113,7 +111,6 @@ export const TOUR: TourStep[] = [
     mechanism: "Both averages use successful runs only. An escalation stops before the expensive part, so averaging it in would drag the two together and understate the gap.",
     target: '[data-tour="metrics"]',
     view: "work",
-    reveal: [],
     nextLabel: "The three tabs",
   },
 
@@ -124,7 +121,6 @@ export const TOUR: TourStep[] = [
     mechanism: "Anything you author is stored in the same table as the samples and is told apart only by its id.",
     target: '[data-tour="work-tabs"]',
     view: "work",
-    reveal: [],
     nextLabel: "Procedures",
   },
 
@@ -135,7 +131,6 @@ export const TOUR: TourStep[] = [
     mechanism: "An imported procedure never wins retrieval over a compiled one. It is advisory until it has earned otherwise.",
     target: '[data-tour="nav-procedures"]',
     view: "procedures",
-    reveal: [],
     nextLabel: "Policy",
   },
 
@@ -146,7 +141,6 @@ export const TOUR: TourStep[] = [
     mechanism: "A rule carries a predicate and an enforcement mode. Advisory rules are prose that is still cited and still goes stale; enforcing rules decide.",
     target: '[data-tour="nav-policy"]',
     view: "policy",
-    reveal: [],
     nextLabel: "Writing your own",
   },
 
@@ -157,7 +151,6 @@ export const TOUR: TourStep[] = [
     mechanism: "The form only offers fields the engine can actually evaluate, so a rule that would silently never match cannot be written.",
     target: '[data-tour="new-rule"]',
     view: "policy",
-    reveal: [],
     nextLabel: "Connections",
   },
 
@@ -168,7 +161,6 @@ export const TOUR: TourStep[] = [
     mechanism: "Keys are scoped and revocable. A key that only asks about memory cannot start a remediation.",
     target: '[data-tour="connections-agents"]',
     view: "connections",
-    reveal: [],
     nextLabel: "Extensions",
   },
 
@@ -179,7 +171,6 @@ export const TOUR: TourStep[] = [
     mechanism: "This screen exists because shipping all of it on the sidebar by default read as a complicated tool rather than a generous one.",
     target: '[data-tour="nav-extensions"]',
     view: "extensions",
-    reveal: [],
     nextLabel: "Now watch it work",
   },
 
@@ -189,7 +180,6 @@ export const TOUR: TourStep[] = [
     body: "From here everything runs for real against the cluster, which is why it is at the end rather than the beginning: a cold run takes about thirteen seconds because a model is genuinely thinking.\n\nFour beats. It learns, it reuses, you change a rule, and it refuses the thing it learned.",
     mechanism: "No step is scripted. If the model does something different, you will see that instead.",
     view: "work",
-    reveal: [],
     nextLabel: "Begin",
   },
 
@@ -224,7 +214,6 @@ export const TOUR: TourStep[] = [
     mechanism: "Each citation is a row in playbook_deps, pinning this runbook to a rule_key at a specific rule_version.",
     target: '[data-tour="runbook-card"]',
     view: "procedures",
-    reveal: [],
     nextLabel: "Now reuse it",
   },
 
@@ -259,7 +248,6 @@ export const TOUR: TourStep[] = [
     mechanism: "One transaction: a new rule version, the head pointer moved, an audit row, one event. Four writes, whether one procedure depends on it or a hundred thousand.",
     target: '[data-tour="nav-policy"]',
     view: "policy",
-    reveal: [],
     advanceOn: "policy:committed",
     action: "Change 24 to 4, then Commit",
     waitingLabel: "Committing the cascade",
@@ -272,7 +260,6 @@ export const TOUR: TourStep[] = [
     mechanism: "No row on the procedure changed. The answer to 'is this still valid' is computed at the moment it is asked.",
     target: '[data-tour="runbook-card"]',
     view: "procedures",
-    reveal: [],
     nextLabel: "Now try to use it",
   },
 
@@ -307,7 +294,6 @@ export const TOUR: TourStep[] = [
     mechanism: "The new provenance has to come from the rule versions the run really consulted. You cannot type citations in by hand.",
     target: '[data-tour="relearn"]',
     view: "procedures",
-    reveal: [],
     advanceOn: "relearn:done",
     action: "Click Re-learn",
     waitingLabel: "Picking an incident, re-solving, compiling",
@@ -321,7 +307,6 @@ export const TOUR: TourStep[] = [
     mechanism: "Your rules and procedures sit in the same tables as the sample ones, and restoring the sample world leaves every one of them in place.",
     target: '[data-tour="make-it-yours"]',
     view: "work",
-    reveal: [],
     nextLabel: "One last thing",
   },
 
@@ -330,7 +315,6 @@ export const TOUR: TourStep[] = [
     title: "Now empty it out",
     body: "<b>Work mode</b> clears the sample incidents and the runbooks this walkthrough compiled, and leaves you the four screens with nothing in them. Your rules, imported procedures, connections and keys all survive it.\n\nThe sample world comes back from the header button whenever you want it.",
     mechanism: "Nothing is deleted, and the extensions you added stay added.",
-    reveal: [],
     nextLabel: "Switch to work mode",
   },
 ];
