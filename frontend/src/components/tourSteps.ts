@@ -244,9 +244,9 @@ export const TOUR: TourStep[] = [
   {
     id: "change-policy",
     title: "Now change the rule it was built on",
-    body: "Open <b>incident.rollback_window</b> and change 24 to 4. You get an impact preview before anything commits.\n\nThen commit it.",
+    body: "The <b>incident.rollback_window</b> rule is highlighted. Change its hours from 24 to 4. You get an impact preview listing what it will invalidate before anything commits.\n\nThen commit it.",
     mechanism: "One transaction: a new rule version, the head pointer moved, an audit row, one event. Four writes, whether one procedure depends on it or a hundred thousand.",
-    target: '[data-tour="nav-policy"]',
+    target: ['[data-tour="commit-modal"]', '[id="rule-incident.rollback_window"]'],
     view: "policy",
     advanceOn: "policy:committed",
     action: "Change 24 to 4, then Commit",
