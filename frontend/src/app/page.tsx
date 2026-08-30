@@ -27,7 +27,6 @@ import { RightRail, ApprovalRequest, Insight } from "../components/RightRail";
 import { IntelligencePanel } from "../components/IntelligencePanel";
 import { IncidentComposer } from "../components/IncidentComposer";
 import type { Explanation, RelearnState, StepEvent } from "../components/runTypes";
-import { Tutorial, tutorialSeen, resetTutorial } from "../components/Tutorial";
 import { Landing, landingSeen, resetLanding } from "../components/Landing";
 import { buildMapModel } from "../components/DecisionMap";
 import { RunProgress } from "../components/RunProgress";
@@ -129,7 +128,6 @@ export default function CascadeApp() {
    */
   const [installed, setInstalled] = useState<string[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [tutorialOpen, setTutorialOpen] = useState(false);
   /**
    * The walkthrough, or null when nobody is being walked through anything.
    *
@@ -607,7 +605,6 @@ export default function CascadeApp() {
     // First visit only. localStorage is unavailable during SSR, so this has to
     // happen after mount — which also means the shell paints behind the modal
     // rather than the modal being the first thing that renders.
-    if (!tutorialSeen()) setTutorialOpen(true);
 
     return () => {
       clearInterval(health);
@@ -720,7 +717,6 @@ export default function CascadeApp() {
         setShortcutsOpen(false);
         setComposerOpen(false);
         setImportOpen(false);
-        setTutorialOpen(false);
         setPaletteOpen(false);
         return;
       }
@@ -1092,7 +1088,6 @@ export default function CascadeApp() {
    * tour would be lying on its second sentence.
    */
   const startTour = useCallback(async () => {
-    setTutorialOpen(false);
     // The walkthrough visits every destination, including the two work mode
     // puts away. Starting it from work mode would send the spotlight to a
     // screen with no icon in the rail, so the tour always restores the full
@@ -1477,16 +1472,6 @@ export default function CascadeApp() {
         hint: "one incident at a time, from cold run to re-learn",
         group: "Actions",
         run: startTour,
-      },
-      {
-        id: "act:intro",
-        label: "Replay the introduction",
-        hint: "what Cascade is and what to watch for",
-        group: "Actions",
-        run: () => {
-          resetTutorial();
-          setTutorialOpen(true);
-        },
       },
       {
         id: "act:author",
@@ -1998,13 +1983,6 @@ export default function CascadeApp() {
             outcome: explanation?.result,
             refusal: explanation?.decision?.reason ?? null,
           })}
-        />
-      )}
-
-      {tutorialOpen && (
-        <Tutorial
-          onStartTour={() => void startTour()}
-          onClose={() => setTutorialOpen(false)}
         />
       )}
 
