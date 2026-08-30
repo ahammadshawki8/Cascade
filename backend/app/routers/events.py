@@ -1,7 +1,5 @@
 """SSE events router — real-time streaming + Lambda→API bridge.
 
-OWNER: Ashfaq (Track A).
-
 Endpoints:
     GET  /api/events      — SSE streaming with topic filtering + heartbeat
     POST /internal/sse    — Lambda worker pushes events to connected dashboards

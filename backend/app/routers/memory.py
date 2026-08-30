@@ -1,7 +1,5 @@
 """Memory API — the part another agent can actually use.
 
-OWNER: Shawki (Track B).
-
 Everything else in this project is Cascade doing the work: its planner, its
 tools, its execution loop. That is a closed system, and adopting it means
 adopting all of it.

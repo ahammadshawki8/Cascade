@@ -1,7 +1,5 @@
 """Negative memory — remembering what failed (T2.5).
 
-OWNER: Shawki (Track B).
-
 Only successes were ever compiled. A failed approach was forgotten the moment
 the task ended, so the agent could rediscover the same dead end indefinitely —
 paying full explore cost each time to reach the same wall.

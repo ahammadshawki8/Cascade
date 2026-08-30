@@ -1,7 +1,5 @@
 """OpenTelemetry tracing (T3.3).
 
-OWNER: Shawki (Track B).
-
 One trace per task, spanning API -> engine -> tools -> database, so a slow or
 failed run can be read end to end instead of reconstructed from log lines.
 

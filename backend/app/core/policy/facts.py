@@ -1,7 +1,5 @@
 """The facts a rule may reason about.
 
-OWNER: Shawki (Track B).
-
 A predicate names fields; this is what supplies them. Keeping the mapping in one
 place means the rule builder in the UI, the validator that rejects a bad rule at
 authoring time, and the evaluator that runs it are all talking about the same

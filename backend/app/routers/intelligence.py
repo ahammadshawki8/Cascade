@@ -1,7 +1,5 @@
 """Intelligence router — insights, savings, replay, time travel, graph.
 
-OWNER: Shawki (Track B).
-
 Endpoints:
     GET  /api/insights                    — trend findings (T1.2)
     POST /api/insights/{id}/dismiss       — hide one

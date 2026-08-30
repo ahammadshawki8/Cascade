@@ -1,7 +1,5 @@
 """Analysis surfaces — counterfactual replay, time travel, blast radius.
 
-OWNER: Shawki (Track B).
-
 T2.2 counterfactual_replay  what a proposed policy would have done to history
 T2.3 time_travel            what the system believed at a past timestamp
 T2.4 blast_radius_graph     rules -> playbooks -> tasks, as a graph

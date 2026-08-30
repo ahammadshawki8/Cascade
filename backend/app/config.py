@@ -1,6 +1,5 @@
 """Environment configuration — mirrors CASCADE_BUILD_SPEC.md §2.1.3.
 
-OWNER: Ashfaq (Track A).
 Adding a variable here means adding it to .env.example AND spec §2.1.3 in the
 same PR, then pinging the other person (WORKFLOW.md §1).
 """

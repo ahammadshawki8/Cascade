@@ -163,7 +163,7 @@ right call — both are scanned constantly but match a small, shrinking subset.
 | R2 | Retention/TTL on `audit_log` and `episodes` | Both are append-only and unbounded |
 | R3 | Range-partition `episodes` by `created_at` | Only matters once the table is large |
 | R4 | Tune `RETRIEVAL_L2_THRESHOLD` against Titan | Currently 0.85 from the spec; the local fallback embedder has different geometry, so this must be re-tuned once Bedrock is live |
-| R5 | Multi-region survival goals | Single-region for the hackathon |
+| R5 | Multi-region survival goals | Single-region for this deployment |
 
 ---
 

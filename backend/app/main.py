@@ -1,7 +1,5 @@
 """FastAPI application factory (spec §8).
 
-OWNER: Ashfaq (Track A).
-
 Day 0 state: lifespan + health + CORS only. Routers are added Day 1 onward:
     tasks · rules · playbooks · metrics · admin · copilot
 """

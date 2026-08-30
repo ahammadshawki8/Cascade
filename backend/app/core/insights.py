@@ -1,7 +1,5 @@
 """Insight engine — the agent proposes policy changes (T1.2, spec §9).
 
-OWNER: Shawki (Track B).
-
 Learn / reuse / unlearn is reactive: policy changes, memory adapts. This closes
 the loop in the other direction — memory notices a pattern and asks a human
 whether the *policy* should change.

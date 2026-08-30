@@ -1,7 +1,5 @@
 """Point-of-use freshness — the authoritative staleness check (spec §5.6, D1).
 
-OWNER: Shawki (Track B).
-
 Staleness is a JOIN, never a column. `playbooks.status_cache` is an async UI
 convenience that may lag; this join is what decides whether a playbook is
 allowed to execute. It runs immediately before every guided run.
@@ -30,7 +28,6 @@ _FRESHNESS_SQL = """
     WHERE d.playbook_id = %s
       AND r.version != d.rule_version
 """
-
 
 async def check_freshness(playbook_id: UUID, db) -> FreshnessResult:
     """Is every dep of this playbook pinned to a head rule version?"""

@@ -1,7 +1,5 @@
 """Playbook confidence lifecycle (spec §6.3).
 
-OWNER: Shawki (Track B).
-
 Constants are frozen by the spec:
 
     new playbook      candidate, confidence 0.30

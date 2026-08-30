@@ -1,7 +1,5 @@
 """LLM transport — Bedrock, OpenAI-compatible, HuggingFace (spec §2).
 
-OWNER: Shawki (Track B).
-
 The engine asks for three capabilities: plan-with-tools, short-completion, and
 embed. This module decides *who serves them*, in a fixed preference order:
 

@@ -1,7 +1,5 @@
 """Savings accounting (T1.4).
 
-OWNER: Shawki (Track B).
-
 Turns the architecture story into a business case using data already on disk.
 Every guided run is compared against the *measured* cold baseline for the same
 mode of work:

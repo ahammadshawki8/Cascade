@@ -1,7 +1,5 @@
 """Mock world — the five tools the agent may call (spec §5.3, D7).
 
-OWNER: Shawki (Track B).
-
 Zero external dependencies by design (edge case #15): every tool is backed by
 `mock_incidents` / `mock_action_log`, so a demo can never hang on someone
 else's network. Policy lives in `rules`, not in this file — these tools read

@@ -1,7 +1,5 @@
 """Semantic invalidation triage (T2.1).
 
-OWNER: Shawki (Track B).
-
 Any rule version bump makes every dependent playbook stale. That is correct and
 safe, but blunt: **widening** a rollback window from 4h to 24h cannot break a
 runbook that already ran inside 4h, yet it gets quarantined all the same. At
@@ -60,7 +58,6 @@ UNCERTAIN   - you cannot tell from the text alone.
 
 When in doubt answer UNCERTAIN. A wrong UNAFFECTED lets an agent act under a
 policy it no longer satisfies; a wrong UNCERTAIN merely costs a re-learn."""
-
 
 async def triage_rule_change(
     rule_key: str,

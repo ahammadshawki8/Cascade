@@ -1,7 +1,5 @@
 """Trajectory -> playbook compiler (spec §6.1, §6.2).
 
-OWNER: Shawki (Track B).
-
 A successful explore run is just a list of tool calls. Compiling turns it into
 a reusable skill:
 
@@ -49,7 +47,6 @@ _INCIDENT_RE = re.compile(r"INC-\d+", re.IGNORECASE)
 
 class CompilationRejected(ValueError):
     """The trajectory did not yield a safe, well-formed playbook."""
-
 
 async def compile_playbook(
     episode_id: UUID,
@@ -203,7 +200,6 @@ Rules:
       {"field": "service_tier", "op": "gte", "param": "auto_remediate_tier.min_tier"}
   Always use "param" for anything policy controls, never a frozen number: the
   number changes when policy changes, and the predicate must change with it."""
-
 
 async def _extract_spec(
     trajectory: list[dict[str, Any]], task_text: str, agent_client

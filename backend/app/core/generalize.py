@@ -1,7 +1,5 @@
 """Playbook generalization — collapsing near-duplicates (T3.8).
 
-OWNER: Shawki (Track B).
-
 `dedup_check` stops the *same* trajectory being compiled twice. It does not
 stop the library accumulating three runbooks that differ only in which action
 they apply — one per incident kind — each carrying its own confidence and each

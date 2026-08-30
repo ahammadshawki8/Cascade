@@ -54,7 +54,7 @@ The rest of this document is what that configuration would be, and why.
 
 CockroachDB's multi-region primitives are the reason it is the right database
 for this system, so what follows records exactly what Cascade configures and
-why — including the parts deliberately **not** turned on for the hackathon
+why — including the parts deliberately **not** turned on for this deployment
 cluster.
 
 ---
@@ -151,7 +151,7 @@ SNS_BUS_TOPIC_ARN=arn:aws:sns:us-east-1:<account>:cascade-bus
 
 ## Not applied to the demo cluster
 
-The hackathon runs on a single-region free-tier cluster. `SURVIVE REGION
+This deployment runs on a single-region free-tier cluster. `SURVIVE REGION
 FAILURE` requires at least three regions, so applying these statements there
 would fail — and asserting multi-region survivability we have not demonstrated
 would be worse than saying plainly that we scoped it out.

@@ -1,6 +1,6 @@
 """Admin router — demo reset and operational checks.
 
-OWNER: Ashfaq (Track A). Reset internals: Shawki (Track B).
+Reset internals: Shawki (the engine).
 
 Endpoints:
     POST /api/admin/reset          — restore the clean v1 demo world

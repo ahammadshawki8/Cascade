@@ -1,7 +1,5 @@
 """Approvals router — the human-in-the-loop gate (spec §9, D2).
 
-OWNER: Shawki (Track B).
-
 Endpoints:
     GET  /api/approvals                  — pending queue for the right rail
     POST /api/approvals/{id}/resolve     — approve or reject

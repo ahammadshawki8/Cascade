@@ -1,7 +1,5 @@
 """What a notification looks like on the other end.
 
-OWNER: Shawki (Track B).
-
 Three destinations, one HTTP transport. The only thing that differs between
 Slack, Discord and a bare webhook is the JSON shape, which is why adding a
 fourth is a function in this file rather than a change to anything that calls

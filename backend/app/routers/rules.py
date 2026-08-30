@@ -1,7 +1,5 @@
 """Rules router — policy management with cascade transaction.
 
-OWNER: Ashfaq (Track A).
-
 Endpoints:
     GET  /api/rules                  — List all head (current) rules
     GET  /api/rules/{rule_key}       — Single rule with version history
@@ -95,7 +93,7 @@ class RuleView(Rule):
     """A rule, plus how it decides.
 
     Extends the frozen Day-0 `Rule` rather than editing it: that model is the
-    Track A/B interface and the assertion suite compares its shape exactly.
+    the engine/B interface and the assertion suite compares its shape exactly.
     Subclassing adds fields for this API without touching the contract.
     """
 

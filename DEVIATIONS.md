@@ -67,7 +67,7 @@ precondition check at execution time, which is where they belong.
 
 ## 4. `apply_remediation` sets `state = 'mitigated'`
 
-**Specified.** Track B's `tools.py` set `state = 'remediated'`.
+**Specified.** `tools.py` set `state = 'remediated'`.
 
 **Implemented.** `'mitigated'`.
 

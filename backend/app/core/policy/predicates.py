@@ -1,7 +1,5 @@
 """The predicate language, and the one evaluator that applies it.
 
-OWNER: Shawki (Track B).
-
 Deliberately tiny. A rule may compare a fact to a literal or to one of its own
 parameters, and combine those comparisons with all/any/not. That is the whole
 language. If something needs a loop or arithmetic it is a tool, not a rule, and
@@ -36,7 +34,6 @@ Tri = bool | None
 
 class PredicateError(ValueError):
     """A predicate is malformed. Raised at authoring time, never at run time."""
-
 
 # ---------------------------------------------------------------------------
 # Operators

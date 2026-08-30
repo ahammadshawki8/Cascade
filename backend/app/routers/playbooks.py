@@ -1,7 +1,5 @@
 """Playbooks router — runbook library with provenance and freshness.
 
-OWNER: Ashfaq (Track A).
-
 Endpoints:
     GET /api/playbooks              — List all playbooks with deps + freshness
     GET /api/playbooks/{id}         — Single playbook detail

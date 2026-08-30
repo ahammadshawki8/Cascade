@@ -1,7 +1,5 @@
 """API keys — an external agent calling as itself.
 
-OWNER: Shawki (Track B).
-
 The shared tokens in `auth.py` were the right call for a demo a judge has to be
 able to run without standing up an identity provider, but they cannot answer
 "which agent asked this" and they cannot be revoked one at a time. Once other

@@ -1,8 +1,8 @@
 """In-process event bus + SSE fan-out (spec §5.2, D4).
 
-OWNER: Ashfaq (Track A). PUBLIC SURFACE FROZEN AFTER DAY 0.
+PUBLIC SURFACE FROZEN AFTER DAY 0.
 
-⚠️ Track B imports interrupt_bus and sse from here (executor.py calls
+⚠️ the engine imports interrupt_bus and sse from here (executor.py calls
 register/unregister; cascade.py calls interrupt_many and sse.publish).
 Signature changes require a contract PR.
 

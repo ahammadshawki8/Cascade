@@ -1,7 +1,5 @@
 """Architecture router — the machinery, read live.
 
-OWNER: Shawki (Track B).
-
 Endpoints:
     GET /api/architecture         — provenance edges, last cascade, outbox, counts
     GET /api/architecture/index   — EXPLAIN proof that the vector index is used

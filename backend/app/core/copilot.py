@@ -1,7 +1,5 @@
 """Ops Copilot — natural language to read-only SQL (spec §8.1, D6).
 
-OWNER: Shawki (Track B).
-
 The honest half of our MCP story: this panel synthesizes SQL, *shows it*, and
 labels the result exploratory. It is not a source of truth and the UI says so.
 
@@ -84,10 +82,8 @@ Rules:
     WHERE d.rule_version <> r.version
 - Only use columns that appear in the schema above. Do not invent one."""
 
-
 class UnsafeSQL(ValueError):
     """The synthesized statement is not a safe read-only query."""
-
 
 async def answer_analytics_question(question: str, db) -> CopilotAnswer:
     """Synthesize SQL, validate it, run it, and return both SQL and rows."""

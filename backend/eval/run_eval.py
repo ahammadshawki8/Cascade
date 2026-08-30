@@ -1,6 +1,6 @@
 """Head-to-head evaluation: two baselines against Cascade, same cases, same model.
 
-OWNER: evaluation harness. Not imported by the running application.
+Not imported by the running application.
 
     python -m eval.run_eval --api https://<host> --admin-token <token>
     python -m eval.run_eval --arm baseline          # skip the Cascade arm

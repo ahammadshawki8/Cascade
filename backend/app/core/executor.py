@@ -1,8 +1,6 @@
 """Task executor — explore and guided paths (spec §5.2, §5.4, D4).
 
-OWNER: Shawki (Track B).
-
-    retrieve -> freshness -> guided        (warm: no planner, just bound steps)
+retrieve -> freshness -> guided        (warm: no planner, just bound steps)
                           -> explore       (cold: Claude plans with tools)
 
 The freshness gate between retrieval and execution is the whole point of the
@@ -322,7 +320,6 @@ Non-negotiable:
 5. Use the fewest tool calls that correctly resolve the incident.
 
 Finish by calling final_answer exactly once.{warnings}"""
-
 
 async def _explore_mode(
     task_id: UUID, task_text: str, db, sse_bus, interrupt_bus

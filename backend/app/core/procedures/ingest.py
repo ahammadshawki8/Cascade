@@ -1,7 +1,5 @@
 """Importing a procedure, and grounding it in policy.
 
-OWNER: Shawki (Track B).
-
 Parsing a runbook is the easy half. The half that matters is provenance: a
 procedure that cites nothing can never be found stale, so importing one without
 linking it to policy produces a library that looks governed and is not.

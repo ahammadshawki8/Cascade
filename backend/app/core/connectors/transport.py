@@ -1,7 +1,5 @@
 """Reaching a real system, without giving up the guarantee that made the demo safe.
 
-OWNER: Shawki (Track B).
-
 Spec edge case #15 required the mock world to have zero external dependencies
 *precisely so* a live call could never hang a demo. Connectors trade that
 guarantee away, so the discipline that replaces it has to be here from the
@@ -42,7 +40,6 @@ BREAKER_THRESHOLD = 3
 
 class DeliveryResult(dict):
     """A plain dict, named so call sites read clearly."""
-
 
 async def _ledger_lookup(connection_id: str, key: str, db) -> dict | None:
     rows = await db.q(

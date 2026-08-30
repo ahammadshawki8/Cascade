@@ -1,7 +1,5 @@
 """Cross-instance interrupt fan-out (T3.7, decision D4).
 
-OWNER: Shawki (Track B).
-
 `InterruptBus` delivers in microseconds — to tasks running in *this* process.
 With one ECS task that is the whole story, which is why the demo runs at
 desired-count 1. Scale out and a rule change reaches only the instance that

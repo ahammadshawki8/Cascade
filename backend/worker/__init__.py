@@ -1,1 +1,1 @@
-"""CASCADE Track B - Worker Module"""
+"""CASCADE the engine - Worker Module"""

@@ -1,7 +1,5 @@
 """Two-phase vector retrieval (spec §5.5, D2 + D3).
 
-OWNER: Shawki (Track B).
-
 D3 — never mix a vector ORDER BY with scalar predicates in one statement. The
 optimizer will happily drop the vector index and scan. So:
 

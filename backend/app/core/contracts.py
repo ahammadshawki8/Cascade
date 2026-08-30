@@ -1,13 +1,13 @@
 """The contract between the tracks. FROZEN AFTER DAY 0 (WORKFLOW.md §1).
 
-OWNER: Shawki (Track B). Track A imports ONLY this module.
+the routers import ONLY this module.
 
 Every function has two bodies: a canned one for CASCADE_STUB_MODE=true, and the
 real engine underneath. That toggle is what let the shell and the frontend get
 built before the engine existed — and flipping it to false IS the integration
 test, so nothing here may change signature to make the wiring easier.
 
-Track A's routers know nothing about `db`, `sse`, or `interrupt_bus`. This
+the routers know nothing about `db`, `sse`, or `interrupt_bus`. This
 module is where those get injected, so the engine stays independently testable
 with a fake db and the routers stay free of engine internals.
 """
@@ -198,7 +198,7 @@ async def change_rule_definition(
     """Change what a rule says *and* how it decides, in one cascade.
 
     Separate from `change_rule` because that signature is frozen: the Day-0
-    contract is the interface Track A builds against, and widening it would
+    contract is the interface the routers build against, and widening it would
     break every caller's expectation of what it accepts. This is additive.
     """
     if _stub():
@@ -297,7 +297,7 @@ async def answer_analytics_question(question: str) -> CopilotAnswer:
 def decide_autonomy(playbook_id: UUID, step_index: int) -> str:
     """"AUTO_EXECUTE" | "REQUIRES_APPROVAL" (D2 risk map).
 
-    Frozen signature, kept for Track A. The executor calls the richer
+    Frozen signature, kept for the routers. The executor calls the richer
     `autonomy.decide_autonomy(tool_name, incident=..., playbook_confidence=...)`
     directly, because the decision depends on *what* is being done to *which*
     service — not on a step ordinal. Risk stays a static property of the tool:

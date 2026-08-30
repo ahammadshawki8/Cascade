@@ -1,7 +1,5 @@
 """Autonomy gating — human-in-the-loop for irreversible actions (spec D2, §9).
 
-OWNER: Shawki (Track B).
-
 The agent may read anything. It may act on its own only where policy *and*
 risk allow. Everything else stops and waits for a person.
 

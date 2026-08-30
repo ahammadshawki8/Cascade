@@ -1,7 +1,5 @@
 """Metrics router — cold vs guided performance delta (the demo money-shot).
 
-OWNER: Ashfaq (Track A).
-
 Endpoints:
     GET /api/metrics — Aggregated cold vs guided metrics + status counts
 """

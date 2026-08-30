@@ -1,6 +1,6 @@
 """The evaluation cases, and the oracle that says what the right answer is.
 
-OWNER: evaluation harness. Not imported by the running application.
+Not imported by the running application.
 
 WHAT COUNTS AS GROUND TRUTH
 ---------------------------

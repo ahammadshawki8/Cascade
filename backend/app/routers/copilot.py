@@ -1,7 +1,5 @@
 """Ops Copilot router — natural language → read-only SQL synthesis.
 
-OWNER: Ashfaq (Track A).
-
 Endpoints:
     POST /api/copilot — Ask a question, get SQL + results
 """

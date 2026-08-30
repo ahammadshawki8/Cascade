@@ -1,7 +1,5 @@
 """Connections — how Cascade talks to the rest of your stack.
 
-OWNER: Shawki (Track B).
-
 Two directions, deliberately in one place because they are one mental model:
 
     outbound   Cascade calls Slack, Discord, a webhook

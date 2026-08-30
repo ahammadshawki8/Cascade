@@ -1,7 +1,5 @@
 """LLM clients — planner, fast calls, embeddings (spec §2, §5.4).
 
-OWNER: Shawki (Track B).
-
 Three capabilities, each with a provider chain (see `providers.py`):
 
     AgentClient  plan with tools   bedrock -> groq -> openrouter -> local planner
@@ -45,10 +43,8 @@ log = logging.getLogger(__name__)
 class BudgetExceeded(Exception):
     """Task hit its step / token / wall-clock ceiling."""
 
-
 class CircuitBreakerOpen(Exception):
     """Too many consecutive failures; stop calling for a while."""
-
 
 class CircuitBreaker:
     """Opens after `failure_threshold` consecutive failures, for `timeout` s."""

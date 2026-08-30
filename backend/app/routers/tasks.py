@@ -1,7 +1,5 @@
 """Tasks router — create and list incident remediation tasks.
 
-OWNER: Ashfaq (Track A).
-
 Endpoints:
     POST /api/tasks               — Submit a new task (starts run_task in background)
     GET  /api/tasks               — List recent tasks

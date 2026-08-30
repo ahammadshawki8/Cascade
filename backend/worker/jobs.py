@@ -1,7 +1,5 @@
 """Outbox job handlers (spec §7.2, D5).
 
-OWNER: Shawki (Track B).
-
 Four jobs, all driven by rows in `outbox`:
 
     compile         successful cold run  -> new playbook

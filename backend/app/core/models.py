@@ -1,9 +1,9 @@
 """Shared types — the vocabulary both tracks speak.
 
-OWNER: Shawki (Track B). FROZEN AFTER DAY 0.
+FROZEN AFTER DAY 0.
 Changing any shape here requires a contract PR (WORKFLOW.md §4).
 
-Track A imports these for response models; Track B implements against them.
+the routers import these for response models; the engine implements against them.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ RemediationAction = Literal["restart", "rollback", "scale_up"]
 
 
 # ============================================================================
-# Additional Enums (from Track B for extension features)
+# Additional Enums (for the extension features)
 # ============================================================================
 
 class ApprovalStatus(str, Enum):
@@ -202,9 +202,9 @@ class StaleDep(BaseModel):
     head: int         # the current head version
 
 
-# Alias for Track B compatibility
+# Backwards-compatible alias
 class StaleRule(BaseModel):
-    """A single stale rule dependency (Track B format)"""
+    """A single stale rule dependency (the engine format)"""
     rule_key: str
     expected_version: int
     actual_version: int

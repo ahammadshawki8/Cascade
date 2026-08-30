@@ -1,6 +1,6 @@
 """Export what the agents actually did, from what was recorded at the time.
 
-OWNER: evaluation harness. Not imported by the running application.
+Not imported by the running application.
 
     python -m eval.export_trajectories --api https://<host> --out eval/out
 

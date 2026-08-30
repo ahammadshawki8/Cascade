@@ -1,8 +1,6 @@
 """Procedures — bringing your own runbooks under governance.
 
-OWNER: Shawki (Track B).
-
-    POST /api/procedures/parse   read a pasted runbook, propose its citations
+POST /api/procedures/parse   read a pasted runbook, propose its citations
     POST /api/procedures         commit it, with the citations a human confirmed
 
 Two calls rather than one, because the linking step is model output and model

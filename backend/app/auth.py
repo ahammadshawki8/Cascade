@@ -1,7 +1,5 @@
 """Role-based access control (T3.1).
 
-OWNER: Shawki (Track B).
-
 Three roles, ordered by privilege:
 
     viewer    read everything

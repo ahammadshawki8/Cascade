@@ -1,6 +1,6 @@
 """Feature-level verification against a running stack, over HTTP.
 
-OWNER: evaluation harness. Not imported by the running application.
+Not imported by the running application.
 
     python -m eval.verify_features --api https://<host> --admin-token <token>
 

@@ -1,8 +1,8 @@
 """Database access — the ONLY way to write (spec §5.1).
 
-OWNER: Ashfaq (Track A). PUBLIC SURFACE FROZEN AFTER DAY 0.
+PUBLIC SURFACE FROZEN AFTER DAY 0.
 
-⚠️ Track B imports run_txn() and q() from here. This is the reverse direction
+⚠️ the engine imports run_txn() and q() from here. This is the reverse direction
 of the contract (WORKFLOW.md §1) — changing either signature breaks every file
 Shawki owns. Signature changes require a contract PR.
 """
@@ -32,7 +32,6 @@ SERIALIZATION_FAILURE = "40001"
 
 class RetryExhausted(RuntimeError):
     """run_txn() exceeded max_retries on 40001 conflicts."""
-
 
 _pool: AsyncConnectionPool | None = None
 

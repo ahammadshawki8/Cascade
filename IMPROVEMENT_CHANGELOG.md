@@ -8,10 +8,11 @@ Where a number is quoted, the commit that produced it is named so you can read
 the measurement rather than take it on trust. Nothing in this document is
 estimated.
 
-Two rows are marked **pending**. Those are the head-to-head baseline numbers,
-and they are produced by `backend/eval/run_eval.py`, not by hand. The method is
-written down here before the numbers exist so that the evaluation cannot be
-tuned after seeing them.
+The head-to-head numbers come from `backend/eval/run_eval.py`, not from hand
+measurement. The method, the primary metric and what a good result would look
+like were all written down before the evaluation was run, so the experiment
+could not be tuned after seeing its own answer. It was not: the prediction it
+records turned out to be wrong, and that is reported rather than revised.
 
 ---
 
@@ -36,8 +37,8 @@ tuned after seeing them.
 
 ## Baseline
 
-**What it is.** A single-prompt agent, the first option the hackathon brief
-lists. It receives the incident, the text of the matching runbook, and the
+**What it is.** A single-prompt agent, the simplest reasonable way to handle
+the task. It receives the incident, the text of the matching runbook, and the
 policy rules written out as prose, and it answers with a decision: remediate, or
 escalate. It has no provenance, no version pinning, and no predicate evaluation.
 It is given the same model Cascade's planner uses, Claude Sonnet 4.6 on Bedrock,
@@ -50,7 +51,9 @@ it safety.
 
 **Evaluation.** Twelve seeded incidents, run twice: once under
 `incident.rollback_window = 24h`, then again after the window is tightened to
-`4h`. Twenty-four decision points per arm, identical cases on both sides. Ground
+`4h`. Twenty-two scored decisions per arm, identical cases on both sides: the
+incident the runbook is compiled from is excluded, because running it changes
+its state and scoring a system on its own training example flatters it. Ground
 truth is the policy predicate, which is data in the database, not a judgement
 call.
 

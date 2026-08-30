@@ -1,7 +1,5 @@
 """Postmortem generation (T1.3, spec §9).
 
-OWNER: Shawki (Track B).
-
 Turns a finished episode into the writeup an engineer would otherwise spend an
 hour on: timeline, which policy was consulted, what the agent decided and why,
 and what a human should check.
@@ -45,7 +43,6 @@ Remediated or escalated, and why.
 2-4 concrete checks a human should perform.
 
 Be factual. Use only what the trajectory shows. Never invent a cause."""
-
 
 async def generate_postmortem(episode_id: UUID, db) -> str:
     """Generate and store a postmortem. Returns the S3 key or a local marker.

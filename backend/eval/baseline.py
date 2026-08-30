@@ -1,10 +1,9 @@
 """The two baselines Cascade is measured against.
 
-OWNER: evaluation harness. Not imported by the running application.
+Not imported by the running application.
 
-The brief asks for "a reasonable basic way to handle the task before using your
-solution" and lists four shapes. These are the first two, because they are the
-two a competent engineer would actually reach for:
+Two reasonable basic ways to handle this task without Cascade, and the two a
+competent engineer would actually reach for:
 
   single_prompt   one direct prompt with basic instructions
   naive_cache     the memory system everybody builds: store what worked, match
@@ -68,7 +67,6 @@ Answer with JSON and nothing else:
 {"decision": "remediate" | "escalate", "rationale": "<one sentence>"}
 
 Escalate if policy does not permit the action. Remediate only if it does."""
-
 
 def _incident_block(case: Case) -> str:
     """The incident as facts, not prose.
@@ -150,7 +148,6 @@ _CACHE_INSTRUCTIONS = _INSTRUCTIONS + """
 
 You also have a runbook from your memory that resolved a very similar incident
 before. Reuse it when it applies."""
-
 
 async def naive_cache(case: Case, policy: str, runbook: str) -> Decision:
     """Retrieve a remembered runbook and replay it.

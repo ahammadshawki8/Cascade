@@ -1,7 +1,5 @@
 """Rule change cascade — the O(1) unlearn transaction (spec §7, D1 + D5).
 
-OWNER: Shawki (Track B).
-
 Changing a rule must not fan out. Marking every dependent playbook stale would
 mean an unbounded write set and heavy contention on exactly the table the
 retrieval path reads. Instead the transaction is a fixed four writes:

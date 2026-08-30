@@ -1,7 +1,5 @@
 """Worker entry points (spec §7.2, D5).
 
-OWNER: Shawki (Track B).
-
 Three ways in, one code path:
 
     lambda_handler     AWS Lambda — SQS batch or EventBridge sweeper
