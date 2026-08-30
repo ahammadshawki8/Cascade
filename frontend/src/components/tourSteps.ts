@@ -456,12 +456,12 @@ export const TOUR: TourStep[] = [
 
   {
     id: "tour-dock",
-    title: "The side panel — asking, and approving",
+    title: "Two things you consult rather than visit",
     body:
-      "<b>Ctrl-\\</b> opens it, and it holds the two things you consult rather than visit.\n\n<b>Copilot</b> answers questions about this database in English and shows you the SQL it ran, so you can check it. <b>Approvals</b> is where an action waits when policy permits it but the runbook has not yet earned the right to act unsupervised.",
+      "Both open the panel on the right, because you consult them while looking at something else rather than instead of it. Each has its own icon: navigating to a panel by way of a button called <b>Side panel</b> was the name of the furniture rather than the name of the thing you wanted.\n\n<b>Copilot</b> answers questions about this database in English and shows the SQL it ran, so you can check it. <b>Approvals</b> is where an action waits when policy permits it but the procedure has not yet earned the right to act unsupervised.",
     mechanism:
       "Copilot is read-only by construction, and refuses anything that is not a single SELECT.",
-    target: '[data-tour="nav-dock"]',
+    target: ['[data-tour="nav-copilot"]', '[data-tour="nav-approvals"]'],
     reveal: [],
     nextLabel: "And the fastest way around",
   },

@@ -1786,7 +1786,10 @@ export default function CascadeApp() {
         badges={{ intelligence: insights.length }}
         dockBadge={approvals.length}
         onCommandPalette={() => setPaletteOpen(true)}
-        onToggleDock={() => setDockOpen((open) => !open)}
+        onOpenDock={(tab) => {
+          setDockTab(tab);
+          setDockOpen(true);
+        }}
       />
 
       <div className={styles.main}>
@@ -2021,6 +2024,11 @@ export default function CascadeApp() {
             open={dockOpen}
             tab={dockTab}
             approvalCount={approvals.length}
+            available={
+              ["copilot", "approvals"].filter((x) =>
+                installed.includes(x)
+              ) as DockTab[]
+            }
             onTab={setDockTab}
             onClose={() => setDockOpen(false)}
           >

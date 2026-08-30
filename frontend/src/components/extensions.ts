@@ -105,7 +105,7 @@ export const EXTENSIONS: Extension[] = [
     id: "approvals",
     name: "Approvals and insights",
     blurb: "Actions parked for a human, and policy changes the engine suggests.",
-    surface: "Adds an Approvals tab to the side panel (Ctrl-\\)",
+    surface: "Adds an Approvals icon, opening the right panel",
     about:
       "Two queues. Approvals holds actions that policy permits but that a procedure has not yet earned the right to take unsupervised. Insights holds policy changes the engine has worked out from your own history — a widening it can show would have recovered incidents that escalated, without permitting anything new.",
     whenToUse:
@@ -161,7 +161,7 @@ export const EXTENSIONS: Extension[] = [
     id: "copilot",
     name: "Ops Copilot",
     blurb: "Ask about this database in English and see the SQL it ran.",
-    surface: "Adds a Copilot tab to the side panel (Ctrl-\\)",
+    surface: "Adds a Copilot icon, opening the right panel",
     about:
       "A read-only question answerer over the same tables everything else reads. It turns a question into a single SELECT, runs it, and shows you both the answer and the statement, so you can check the query rather than trust the summary.",
     whenToUse:

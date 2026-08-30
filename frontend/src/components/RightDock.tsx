@@ -10,6 +10,8 @@ interface Props {
   open: boolean;
   tab: DockTab;
   approvalCount: number;
+  /** Which panels are installed. A tab for an absent one would be a dead end. */
+  available: DockTab[];
   onTab: (tab: DockTab) => void;
   onClose: () => void;
   children: React.ReactNode;
@@ -34,6 +36,7 @@ export function RightDock({
   open,
   tab,
   approvalCount,
+  available,
   onTab,
   onClose,
   children,
@@ -89,23 +92,29 @@ export function RightDock({
         aria-label="Resize panel"
       />
 
+      {/* Only tabs for panels that are installed. Both are extensions now, so
+          a dock that always showed two would offer a tab leading nowhere. */}
       <div className={styles.head}>
-        <button
-          className={`${styles.tab} ${tab === "copilot" ? styles.tabOn : ""}`}
-          onClick={() => onTab("copilot")}
-        >
-          <Sparkles size={13} strokeWidth={1.9} />
-          Copilot
-        </button>
-        <button
-          className={`${styles.tab} ${tab === "approvals" ? styles.tabOn : ""}`}
-          onClick={() => onTab("approvals")}
-          data-tour="dock-approvals"
-        >
-          <ShieldCheck size={13} strokeWidth={1.9} />
-          Approvals
-          {approvalCount > 0 && <span className={styles.count}>{approvalCount}</span>}
-        </button>
+        {available.includes("copilot") && (
+          <button
+            className={`${styles.tab} ${tab === "copilot" ? styles.tabOn : ""}`}
+            onClick={() => onTab("copilot")}
+          >
+            <Sparkles size={13} strokeWidth={1.9} />
+            Copilot
+          </button>
+        )}
+        {available.includes("approvals") && (
+          <button
+            className={`${styles.tab} ${tab === "approvals" ? styles.tabOn : ""}`}
+            onClick={() => onTab("approvals")}
+            data-tour="dock-approvals"
+          >
+            <ShieldCheck size={13} strokeWidth={1.9} />
+            Approvals
+            {approvalCount > 0 && <span className={styles.count}>{approvalCount}</span>}
+          </button>
+        )}
         <span className={styles.spacer} />
         <button className={styles.close} onClick={onClose} aria-label="Close panel">
           <X size={14} strokeWidth={2} />

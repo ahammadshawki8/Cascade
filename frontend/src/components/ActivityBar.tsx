@@ -17,6 +17,8 @@ import {
   ChevronsRight,
   Blocks,
   Sparkles,
+  MessagesSquare,
+  ClipboardCheck,
 } from "lucide-react";
 
 const EXPANDED_KEY = "cascade_rail_expanded";
@@ -161,7 +163,8 @@ interface Props {
   badges?: Partial<Record<ViewId, number>>;
   dockBadge?: number;
   onCommandPalette: () => void;
-  onToggleDock: () => void;
+  /** Open the right dock on a specific tab. */
+  onOpenDock: (tab: "copilot" | "approvals") => void;
 }
 
 export function ActivityBar({
@@ -173,7 +176,7 @@ export function ActivityBar({
   badges = {},
   dockBadge = 0,
   onCommandPalette,
-  onToggleDock,
+  onOpenDock,
 }: Props) {
   /**
    * Labels on, until you turn them off.
@@ -273,22 +276,44 @@ export function ActivityBar({
           thing. It lives on Ctrl-K, and in the banner that appears when the
           sample world has actually aged, which is the moment anyone needs it. */}
       <div className={styles.group}>
-        {(installedIds.includes("copilot") ||
-          installedIds.includes("approvals")) && (
+        {/* One button per panel, not one button for the container.
+            Installing Ops Copilot used to add something labelled "Side panel",
+            which is the name of the furniture rather than the name of the thing
+            you asked for. They share a dock because you consult them while
+            looking at something else; they do not share an entry point. */}
+        {installedIds.includes("copilot") && (
           <button
             type="button"
             className={styles.item}
-            onClick={onToggleDock}
-            data-tour="nav-dock"
-            aria-label="Side panel"
+            onClick={() => onOpenDock("copilot")}
+            data-tour="nav-copilot"
+            aria-label="Ops Copilot"
           >
-            <PanelRight size={20} strokeWidth={1.75} />
-            {expanded && <span className={styles.itemLabel}>Side panel</span>}
+            <MessagesSquare size={20} strokeWidth={1.75} />
+            {expanded && <span className={styles.itemLabel}>Copilot</span>}
+            {!expanded && (
+              <span className={styles.tooltip} role="tooltip">
+                <strong>Ops Copilot</strong>
+                <em>Ask in English, see the SQL</em>
+              </span>
+            )}
+          </button>
+        )}
+        {installedIds.includes("approvals") && (
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => onOpenDock("approvals")}
+            data-tour="nav-approvals"
+            aria-label="Approvals and insights"
+          >
+            <ClipboardCheck size={20} strokeWidth={1.75} />
+            {expanded && <span className={styles.itemLabel}>Approvals</span>}
             {dockBadge > 0 && <span className={styles.badge}>{dockBadge}</span>}
             {!expanded && (
               <span className={styles.tooltip} role="tooltip">
-                <strong>Side panel</strong>
-                <em>Ctrl \</em>
+                <strong>Approvals and insights</strong>
+                <em>Actions waiting on a human</em>
               </span>
             )}
           </button>
