@@ -769,20 +769,47 @@ export default function CascadeApp() {
       setExplanation(data);
 
       /**
-       * A cold run that *remediated* is about to become a runbook, but
-       * compilation happens in a worker and lands seconds later. Say so, and
-       * stop saying it the moment the runbook actually appears.
+       * Let the picture land before moving the walkthrough on.
        *
-       * `result === "remediated"` matters and used to be missing. An escalation
-       * is also `status: "succeeded"` — the task ran fine, policy simply said
-       * no — but the executor deliberately never compiles one, because policy
-       * working is not knowledge gained. So a refusal entered this loop and
-       * waited the full two minutes for a runbook that was never coming, and
-       * `run:finished` fires *after* the loop, which left the walkthrough step
-       * watching the refusal apparently frozen for two minutes.
+       * The decision map is the only place the argument is visible, and it
+       * finishes drawing after the run does. Advancing the instant the task
+       * reached a terminal state closed the window on the refusal before the
+       * line had visibly dropped out of the upper lane, which is the single
+       * image the whole sequence is built around.
        *
-       * The condition now mirrors the executor's own compile gate exactly:
-       * explore, and remediated.
+       * Six seconds, measured from the moment the verdict arrived rather than
+       * added blindly, so a run that took a while to report does not get padded
+       * on top.
+       */
+      const settleUntil = Date.now() + 6000;
+
+      const reason = data?.decision?.reason;
+
+      const holdForTheMap = async () => {
+        const left = settleUntil - Date.now();
+        if (left > 0) await new Promise((r) => setTimeout(r, left));
+      };
+
+      await holdForTheMap();
+      fireTour("run:finished");
+      if (reason === "reused") fireTour("run:reused");
+      if (reason === "refused_stale" || reason === "refused_precondition") {
+        fireTour("run:refused");
+      }
+
+      /**
+       * Then wait for the compile, with the walkthrough already moved on.
+       *
+       * This used to run *before* the events above, so a cold run held the step
+       * that was watching it for the whole twenty-five seconds the worker takes.
+       * The viewer sat on a finished run being told to watch it. Now the run
+       * step ends when the run ends, and the next step, which is about the
+       * runbook, is the one that waits for the runbook.
+       *
+       * `result === "remediated"` mirrors the executor's own compile gate. An
+       * escalation is also `status: "succeeded"`, and compiling one is
+       * deliberately refused, so without it a refusal waited two minutes for
+       * something that was never coming.
        */
       if (
         data?.mode === "explore" &&
@@ -797,31 +824,22 @@ export default function CascadeApp() {
           await fetchPlaybooks();
           if (playbookCountRef.current > before) {
             setAnnounce("A runbook was compiled from that run. The next matching incident can reuse it.");
-            fireTour("runbook:compiled");
-            // Re-read the verdict now that the compile has landed. The first
-            // read happened seconds too early to know what this run became,
-            // and the panel would otherwise keep saying nothing was saved.
             try {
               const fresh = await fetch(`${API_BASE}/tasks/${taskId}/explain`);
               if (fresh.ok) setExplanation(await fresh.json());
             } catch {}
+            // Let the card render before the step pointing at it advances.
+            await new Promise((r) => setTimeout(r, 1200));
+            fireTour("runbook:compiled");
             break;
           }
         }
         setCompiling(false);
         // Whether or not anything was compiled. A compile can be rejected by
         // the safety lint or deduped into an existing runbook, and both are
-        // correct outcomes that leave a walkthrough step waiting on
-        // `runbook:compiled` with nothing coming. Firing after a successful
-        // compile too is a no-op: the step has already moved on.
+        // correct outcomes that would otherwise leave a step waiting on
+        // `runbook:compiled` with nothing coming.
         fireTour("compile:settled");
-      }
-
-      const reason = data?.decision?.reason;
-      fireTour("run:finished");
-      if (reason === "reused") fireTour("run:reused");
-      if (reason === "refused_stale" || reason === "refused_precondition") {
-        fireTour("run:refused");
       }
 
       // No tab switch: the evidence is in the island, where the run already is.

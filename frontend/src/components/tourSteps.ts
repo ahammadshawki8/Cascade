@@ -202,19 +202,21 @@ export const TOUR: TourStep[] = [
     mechanism: "It is in the lower lane, because there is nothing in memory for it to be in the upper one.",
     target: '[data-tour="island"]',
     reveal: ["INC-1001"],
-    advanceOn: ["runbook:compiled", "compile:settled"],
+    advanceOn: "run:finished",
     action: "Click the pill to open it",
-    waitingLabel: "Solving, then compiling what it did",
+    waitingLabel: "Reasoning from policy, one tool call at a time",
   },
 
   {
     id: "what-it-learned",
     title: "It wrote down the procedure, and what the procedure assumed",
-    body: "The run became a runbook. Look at the rules listed on it: those are the exact policy versions the agent consulted while solving the incident.\n\nThat second part is the whole system. Most tools remember the procedure. Almost none remember what the procedure was based on.",
+    body: "That run is being compiled into a runbook now, in a worker, which takes a few seconds. Watch the card appear.\n\nThen look at the rules listed on it. Those are the exact policy versions the agent consulted while solving the incident, and that second part is the whole system. Most tools remember the procedure. Almost none remember what the procedure was based on.",
     mechanism: "Each citation is a row in playbook_deps, pinning this runbook to a rule_key at a specific rule_version.",
     target: '[data-tour="runbook-card"]',
     view: "procedures",
-    nextLabel: "Now reuse it",
+    advanceOn: ["runbook:compiled", "compile:settled"],
+    action: "Wait for the runbook to appear",
+    waitingLabel: "Compiling the run into a runbook",
   },
 
   {
