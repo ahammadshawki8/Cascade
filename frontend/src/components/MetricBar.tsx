@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { X } from "lucide-react";
 import styles from "./MetricBar.module.css";
 import { CountUp } from "./CountUp";
 
@@ -71,6 +73,28 @@ export function MetricBar({ data }: MetricBarProps) {
    */
   const degradedButOnBedrock =
     data?.llm === "degraded" && data.llm_provider === "bedrock";
+
+  /**
+   * Dismissible, and keyed on which condition it is reporting.
+   *
+   * "Recovered" is information, not a warning: Bedrock is serving, the timings
+   * are real, and there is nothing for anyone to do about it. A permanent amber
+   * strip across an app that is working correctly is how people learn to stop
+   * reading amber strips.
+   *
+   * Keyed rather than a plain boolean so that dismissing the harmless one does
+   * not silence a genuinely different condition arriving later. Falling back to
+   * the local planner after this was closed is worth saying, and it says it.
+   */
+  const bannerKind = !data || data.llm !== "degraded"
+    ? null
+    : degradedButOnBedrock
+    ? "recovered"
+    : onLocalPlanner
+    ? "local"
+    : "fallback";
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const showBanner = bannerKind !== null && dismissed !== bannerKind;
 
   return (
     <div style={{ position: "relative" }}>
@@ -163,7 +187,7 @@ export function MetricBar({ data }: MetricBarProps) {
           none, so they are not. Saying "no model provider reachable" when
           Groq is serving is simply false, and it is the timing caveat that an
           operator actually needs to get right. */}
-      {data?.llm === "degraded" && (
+      {showBanner && (
         <div className={styles.degradedStrip}>
           {degradedButOnBedrock ? (
             <>
@@ -192,6 +216,15 @@ export function MetricBar({ data }: MetricBarProps) {
               </span>
             </>
           )}
+          <button
+            type="button"
+            className={styles.degradedClose}
+            onClick={() => setDismissed(bannerKind)}
+            aria-label="Dismiss"
+            title="Dismiss"
+          >
+            <X size={13} />
+          </button>
         </div>
       )}
     </div>
